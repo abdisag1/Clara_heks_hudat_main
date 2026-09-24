@@ -143,7 +143,7 @@ pio test -e native
 | Pump steps | busy loop in `loop()`, slowed by other work | Timer1 interrupt; exact step count |
 | Dosing calibration | sent from main board over I2C, but the frame was always rejected, so hard-coded values were used | stored in the dosing board's EEPROM, set from its USB console |
 | Production time | always 180 min (EEPROM value never loaded) | `production_min` parameter |
-| Power cut during production | batch restarted | batch resumes (progress saved every 10 min) |
+| Power cut during production | batch restarted | batch resumes (progress saved every 10 min); `cancel` abandons it, `resume_batch 0` disables resuming |
 | Storage tank full after settling | shown as "Settling" indefinitely | explicit "Tank full" state, transfer starts when there is space |
 | Level sensors | array comparisons that read past the buffers | 10 s consecutive-sample filter (`level_debounce`) |
 | NaClO tank empty | pump stopped at the next 20 s decision | pump stops within 1 s; LCD shows "NaClO tank EMPTY" |

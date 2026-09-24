@@ -248,6 +248,27 @@ void test_param_persistence_rejects_corruption_and_schema_change() {
   TEST_ASSERT_EQUAL_FLOAT(5.0f, store.get(0));  // defaults restored
 }
 
+void test_param_persistence_accepts_record_of_shorter_table() {
+  // Firmware update that appended "beta": the saved "alpha" must survive.
+  fakes::FakeEeprom eeprom;
+  ParamPersistence persistence(eeprom, 0);
+  float oldValues[1];
+  ParamStore oldStore(kTestTable, 1, oldValues);
+  oldStore.set(0, 9.0f);
+  persistence.save(oldStore);
+
+  float values[2];
+  ParamStore store(kTestTable, 2, values);
+  TEST_ASSERT_EQUAL(ParamPersistence::kLoadExtended, persistence.load(store));
+  TEST_ASSERT_EQUAL_FLOAT(9.0f, store.get(0));
+  TEST_ASSERT_EQUAL_FLOAT(0.5f, store.get(1));  // new parameter: default
+  persistence.save(store);
+  TEST_ASSERT_EQUAL(ParamPersistence::kLoadOk, persistence.load(store));
+
+  // The other direction (downgrade) is rejected.
+  TEST_ASSERT_EQUAL(ParamPersistence::kLoadSchemaChanged, persistence.load(oldStore));
+}
+
 void test_param_persistence_only_writes_changed_bytes() {
   fakes::FakeEeprom eeprom;
   float values[2];
@@ -409,6 +430,7 @@ int main() {
   RUN_TEST(test_param_store_defaults_find_and_range);
   RUN_TEST(test_param_persistence_roundtrip);
   RUN_TEST(test_param_persistence_rejects_corruption_and_schema_change);
+  RUN_TEST(test_param_persistence_accepts_record_of_shorter_table);
   RUN_TEST(test_param_persistence_only_writes_changed_bytes);
   RUN_TEST(test_ring_store_returns_newest_record_across_wrap);
   RUN_TEST(test_ring_store_falls_back_when_newest_slot_is_torn);

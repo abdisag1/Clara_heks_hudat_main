@@ -22,6 +22,7 @@ namespace mainboard {
  *   help | cal               command list
  *   status                   process state, sensors, dosing link
  *   get / set / defaults     calibration parameters
+ *   cancel                   abandon the running batch, go to standby
  *   force <standby|production|settling|transfer>   jump to a state (bench test)
  *   report                   send an Ecophi frame now
  */

@@ -39,22 +39,24 @@ ParamPersistence::LoadResult ParamPersistence::load(ParamStore& params) const {
   params.resetToDefaults();
 
   if (readU16(eeprom_, base_) != kParamMagic) return kLoadEmpty;
-  if (readU16(eeprom_, static_cast<uint16_t>(base_ + 2)) != params.schemaId() ||
-      eeprom_.read(static_cast<uint16_t>(base_ + 4)) != params.count()) {
+  const uint8_t storedCount = eeprom_.read(static_cast<uint16_t>(base_ + 4));
+  if (storedCount == 0 || storedCount > params.count() ||
+      readU16(eeprom_, static_cast<uint16_t>(base_ + 2)) != params.schemaId(storedCount)) {
     return kLoadSchemaChanged;
   }
 
-  const uint16_t payloadLength = static_cast<uint16_t>(5u + 4u * params.count());
+  const uint16_t payloadLength = static_cast<uint16_t>(5u + 4u * storedCount);
   const uint16_t storedCrc = readU16(eeprom_, static_cast<uint16_t>(base_ + payloadLength));
   if (crc16Eeprom(eeprom_, base_, payloadLength) != storedCrc) return kLoadCorrupt;
 
   bool repaired = false;
-  for (uint8_t i = 0; i < params.count(); ++i) {
+  for (uint8_t i = 0; i < storedCount; ++i) {
     uint8_t bytes[4];
     for (uint8_t b = 0; b < 4; ++b) bytes[b] = eeprom_.read(static_cast<uint16_t>(base_ + 5u + 4u * i + b));
     if (params.set(i, getF32(bytes)) != kSetOk) repaired = true;  // keeps the default
   }
-  return repaired ? kLoadRepaired : kLoadOk;
+  if (repaired) return kLoadRepaired;
+  return storedCount < params.count() ? kLoadExtended : kLoadOk;
 }
 
 void ParamPersistence::save(const ParamStore& params) {

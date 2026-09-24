@@ -391,6 +391,65 @@ void test_mainboard_resumes_batch_after_power_cut() {
   TEST_ASSERT_LESS_OR_EQUAL_UINT32(180 * kMinute - 85 * kMinute, remaining);
 }
 
+/** Runs the main board until it is @p minutes into production, then "cuts the power". */
+void produceFor(fakes::FakeEeprom& eeprom, uint32_t minutes, const char* command = 0) {
+  fakes::FakeClock clock;
+  DeadLink link;
+  MainBench bench(clock, link, eeprom);
+  bench.app.begin();
+  bench.io.levels[0] = true;
+  for (uint32_t t = 0; t < minutes * kMinute; t += 100) {
+    clock.advanceMs(100);
+    bench.app.update();
+  }
+  TEST_ASSERT_EQUAL(mainboard::kStateProduction, bench.app.cycle().state());
+  if (command != 0) bench.type(command);
+}
+
+void test_mainboard_cancel_command_prevents_resume() {
+  fakes::FakeEeprom eeprom;
+  produceFor(eeprom, 30, "cancel");
+  fakes::FakeClock clock;
+  DeadLink link;
+  MainBench rebooted(clock, link, eeprom);
+  rebooted.app.begin();
+  TEST_ASSERT_FALSE(rebooted.app.status().progressRestored);
+  TEST_ASSERT_EQUAL(mainboard::kStateStandby, rebooted.app.cycle().state());
+  TEST_ASSERT_FALSE(rebooted.io.outputs.electrolysis);
+}
+
+void test_mainboard_resume_can_be_disabled() {
+  fakes::FakeEeprom eeprom;
+  produceFor(eeprom, 30, "set resume_batch 0");
+  fakes::FakeClock clock;
+  DeadLink link;
+  MainBench rebooted(clock, link, eeprom);
+  rebooted.app.begin();
+  rebooted.shell.printBanner();
+  TEST_ASSERT_TRUE(rebooted.app.status().progressDiscarded);
+  TEST_ASSERT_EQUAL(mainboard::kStateStandby, rebooted.app.cycle().state());
+  TEST_ASSERT_FALSE(rebooted.io.outputs.electrolysis);
+  TEST_ASSERT_TRUE(rebooted.serial.contains("not resumed"));
+}
+
+void test_mainboard_keeps_settings_saved_by_previous_firmware() {
+  // EEPROM written by the first v3 release, which had 8 parameters (no resume_batch).
+  fakes::FakeEeprom eeprom;
+  {
+    float values[8];
+    ParamStore previous(mainboard::parameterTable(), 8, values);
+    previous.set(mainboard::kProductionMin, 150.0f);
+    ParamPersistence(eeprom, mainboard::kEepromParamsAddress).save(previous);
+  }
+  fakes::FakeClock clock;
+  DeadLink link;
+  MainBench bench(clock, link, eeprom);
+  bench.app.begin();
+  TEST_ASSERT_EQUAL(ParamPersistence::kLoadOk, bench.app.status().calibrationLoad);
+  TEST_ASSERT_EQUAL_FLOAT(150.0f, bench.app.params().get(mainboard::kProductionMin));
+  TEST_ASSERT_EQUAL_FLOAT(1.0f, bench.app.params().get(mainboard::kResumeBatch));
+}
+
 void test_mainboard_imports_v22_settings() {
   fakes::FakeClock clock;
   fakes::FakeEeprom eeprom;
@@ -564,6 +623,9 @@ int main() {
   RUN_TEST(test_status_and_help_commands);
   RUN_TEST(test_mainboard_full_production_cycle);
   RUN_TEST(test_mainboard_resumes_batch_after_power_cut);
+  RUN_TEST(test_mainboard_cancel_command_prevents_resume);
+  RUN_TEST(test_mainboard_resume_can_be_disabled);
+  RUN_TEST(test_mainboard_keeps_settings_saved_by_previous_firmware);
   RUN_TEST(test_mainboard_imports_v22_settings);
   RUN_TEST(test_mainboard_console_changes_production_time);
   RUN_TEST(test_mainboard_shows_link_loss);

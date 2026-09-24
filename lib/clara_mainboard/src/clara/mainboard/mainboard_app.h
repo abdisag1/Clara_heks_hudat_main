@@ -50,6 +50,7 @@ struct MainboardStatus {
   link::DosingTelemetry dosing;    ///< Last valid telemetry.
   ParamPersistence::LoadResult calibrationLoad;
   bool progressRestored;           ///< A batch was resumed after a power cut.
+  bool progressDiscarded;          ///< A batch was interrupted, but resume_batch = 0.
   bool legacyImported;             ///< v2.2 settling/transfer times imported.
 };
 
@@ -68,6 +69,13 @@ class MainboardApp {
 
   /** Bench test: jump to a process state. */
   void forceState(ProcessState state);
+  /**
+   * Abandons the running batch: outputs off, STANDBY, and the saved progress
+   * is replaced so the batch is not resumed at the next power-up. (If the
+   * production bottle still reads full, a new batch starts after the level
+   * debounce time.)
+   */
+  void cancelBatch() { forceState(kStateStandby); }
   /** Sends an Ecophi report immediately (and restarts the report period). */
   void sendReportNow();
 
@@ -83,7 +91,7 @@ class MainboardApp {
   void pollDosingBoard(uint32_t nowMs);
   void refreshDisplay(uint32_t nowMs);
   void sendReport(uint32_t nowMs);
-  void persistProgress(uint32_t nowMs);
+  void persistProgress(uint32_t nowMs, bool force = false);
 
   const Clock& clock_;
   MainboardIo& io_;

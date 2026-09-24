@@ -31,8 +31,8 @@ class EepromDevice {
  * | offset | size | content                       |
  * |--------|------|-------------------------------|
  * | 0      | 2    | magic 0x434C ("CL")           |
- * | 2      | 2    | ParamStore::schemaId()        |
- * | 4      | 1    | parameter count               |
+ * | 2      | 2    | ParamStore::schemaId(n)       |
+ * | 4      | 1    | parameter count n             |
  * | 5      | 4n   | float values, little endian   |
  * | 5+4n   | 2    | CRC-16 of all preceding bytes |
  */
@@ -41,6 +41,8 @@ class ParamPersistence {
   enum LoadResult {
     kLoadOk = 0,         ///< Record valid, every value applied.
     kLoadRepaired,       ///< Record valid, but some values were out of range and were reset to defaults.
+    kLoadExtended,       ///< Record from a firmware with fewer parameters: those values were kept, the
+                         ///< new parameters got their defaults. Save to upgrade the record.
     kLoadEmpty,          ///< No record (blank or foreign data): defaults in use.
     kLoadSchemaChanged,  ///< Record written by a firmware with a different table: defaults in use.
     kLoadCorrupt,        ///< Checksum error: defaults in use.
@@ -48,7 +50,11 @@ class ParamPersistence {
 
   ParamPersistence(EepromDevice& eeprom, uint16_t baseAddress) : eeprom_(eeprom), base_(baseAddress) {}
 
-  /** Loads the record into @p params. On any failure @p params is reset to defaults. */
+  /**
+   * Loads the record into @p params. On any failure @p params is reset to
+   * defaults. A record written by an older firmware whose table was a prefix of
+   * the current one (parameters are only ever appended) is still accepted.
+   */
   LoadResult load(ParamStore& params) const;
 
   /** Writes @p params. Only changed bytes are physically written. */

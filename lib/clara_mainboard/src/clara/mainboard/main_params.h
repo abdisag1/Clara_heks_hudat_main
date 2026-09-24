@@ -20,6 +20,7 @@ enum Param {
   kLevelDebounceS,     ///< A level sensor must be stable this long to change state, s.
   kVoltageRef,         ///< ADC reference voltage as measured on the board, V.
   kVoltageDivider,     ///< Voltage sensor divider ratio (battery V per ADC V).
+  kResumeBatch,        ///< 1: continue an interrupted batch after a power cut, 0: start in standby.
   kParamCount
 };
 

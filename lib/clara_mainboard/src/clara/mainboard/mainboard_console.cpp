@@ -24,7 +24,11 @@ void MainboardConsole::printBanner() {
   if (status.calibrationLoad != ParamPersistence::kLoadOk) {
     out_.printLineFlash(CLARA_F("warning - no valid calibration in EEPROM, defaults in use"));
   }
-  if (status.progressRestored) out_.printLineFlash(CLARA_F("resumed the batch interrupted by a power cut"));
+  if (status.progressRestored) {
+    out_.printLineFlash(CLARA_F("resumed the batch interrupted by a power cut"));
+    out_.printLineFlash(CLARA_F("  type cancel to abandon it, or set resume_batch 0 to never resume"));
+  }
+  if (status.progressDiscarded) out_.printLineFlash(CLARA_F("interrupted batch not resumed (resume_batch = 0)"));
 }
 
 void MainboardConsole::onChar(char c) {
@@ -48,6 +52,9 @@ void MainboardConsole::execute(char* line) {
     printStatus();
   } else if (is(tokens[0], CLARA_F("force"))) {
     handleForce(tokens, count);
+  } else if (is(tokens[0], CLARA_F("cancel"))) {
+    app_.cancelBatch();
+    out_.printLineFlash(CLARA_F("ok - batch cancelled, standby (will not resume after power-up)"));
   } else if (is(tokens[0], CLARA_F("report"))) {
     app_.sendReportNow();
     out_.newline();
@@ -60,6 +67,7 @@ void MainboardConsole::printHelp() {
   out_.printLineFlash(CLARA_F("Clara main board commands"));
   out_.printLineFlash(CLARA_F("  status                live values"));
   paramConsole_.printHelp();
+  out_.printLineFlash(CLARA_F("  cancel                abandon the running batch (standby)"));
   out_.printLineFlash(CLARA_F("  force <standby|production|settling|transfer>"));
   out_.printLineFlash(CLARA_F("                        jump to a state (bench test)"));
   out_.printLineFlash(CLARA_F("  report                send an Ecophi frame now"));

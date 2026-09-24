@@ -76,7 +76,14 @@ class ParamStore {
    * EEPROM record so that data written by a firmware with a different table is
    * never misinterpreted after an update.
    */
-  uint16_t schemaId() const;
+  uint16_t schemaId() const { return schemaId(count_); }
+
+  /**
+   * Fingerprint of the first @p count entries only. Lets a firmware that
+   * appended parameters at the end of its table still read the values saved by
+   * the previous version.
+   */
+  uint16_t schemaId(uint8_t count) const;
 
  private:
   const ParamInfo* table_;

@@ -24,6 +24,10 @@ DosingApp::DosingApp(const Clock& clock, FlowSensor& flowSensor, PumpDriver& pum
 
 void DosingApp::begin() {
   status_.calibrationLoad = persistence_.load(params_);
+  if (status_.calibrationLoad == ParamPersistence::kLoadExtended) {
+    persistence_.save(params_);  // record from an older firmware: add the new parameters
+    status_.calibrationLoad = ParamPersistence::kLoadOk;
+  }
   applyParams();
 
   const uint32_t nowMs = clock_.millis();

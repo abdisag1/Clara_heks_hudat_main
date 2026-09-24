@@ -103,5 +103,6 @@ monitors at 9600 baud: dosing board USB, main board USB.
 | M5 | wait 2 min | relays off, polarity relay toggles, "Settling" 5 min, then valve opens 10 min |
 | M6 | L2 (storage tank) high during settling | "Tank full" state, valve stays closed until L2 goes low |
 | M7 | power off during production, power on | production continues (banner: "resumed the batch") |
+| M7b | type `cancel`, power off and on | standby; the batch is not resumed |
 | M8 | watch the RS485 line | a `;...:` frame every `report_interval` seconds |
 | M9 | `set production_min 180` | restore the production time |

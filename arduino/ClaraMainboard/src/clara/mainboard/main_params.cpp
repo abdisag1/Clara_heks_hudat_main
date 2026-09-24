@@ -16,6 +16,7 @@ const char kNameReport[] CLARA_PROGMEM = "report_interval";
 const char kNameDebounce[] CLARA_PROGMEM = "level_debounce";
 const char kNameVref[] CLARA_PROGMEM = "voltage_ref";
 const char kNameDivider[] CLARA_PROGMEM = "voltage_divider";
+const char kNameResume[] CLARA_PROGMEM = "resume_batch";
 
 const char kUnitMin[] CLARA_PROGMEM = "min";
 const char kUnitS[] CLARA_PROGMEM = "s";
@@ -30,6 +31,7 @@ const char kHelpReport[] CLARA_PROGMEM = "Ecophi report period";
 const char kHelpDebounce[] CLARA_PROGMEM = "level sensor filter time";
 const char kHelpVref[] CLARA_PROGMEM = "ADC reference (measure 5V pin)";
 const char kHelpDivider[] CLARA_PROGMEM = "voltage sensor divider ratio";
+const char kHelpResume[] CLARA_PROGMEM = "1 = continue batch after power cut";
 
 // Defaults reproduce the behaviour of the v2.2 field firmware.
 const ParamInfo kTable[kParamCount] CLARA_PROGMEM = {
@@ -42,6 +44,7 @@ const ParamInfo kTable[kParamCount] CLARA_PROGMEM = {
     {kNameDebounce,    kUnitS,    kHelpDebounce,   1.0f,  120.0f,  10.0f,   0},
     {kNameVref,        kUnitV,    kHelpVref,       1.0f,  5.5f,    4.85f,   3},
     {kNameDivider,     kUnitNone, kHelpDivider,    1.0f,  100.0f,  22.2f,   3},
+    {kNameResume,      kUnitNone, kHelpResume,     0.0f,  1.0f,    1.0f,    0},
 };
 
 }  // namespace

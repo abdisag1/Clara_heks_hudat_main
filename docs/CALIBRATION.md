@@ -125,9 +125,17 @@ output also goes out on RS485; the Ecophi parser ignores it (it never starts wit
 | 5 | `level_debounce` | 10 | s | a level sensor must be stable this long |
 | 6 | `voltage_ref` | 4.85 | V | ADC reference: measure the Mega's 5 V pin |
 | 7 | `voltage_divider` | 22.2 | - | voltage sensor divider ratio |
+| 8 | `resume_batch` | 1 | - | 1: continue an interrupted batch after a power cut; 0: always start in standby |
 
 **Voltage calibration:** measure the battery with a multimeter, compare with `status`, and
 scale `voltage_divider` by (multimeter / displayed).
+
+**Interrupted batches:** after a power cut the main board continues the batch where
+it stopped (to within 10 min). To abandon it, type `cancel`: the outputs switch off,
+the board goes to standby, and the batch is not resumed at the next power-up. To
+switch the resume feature off completely, use `set resume_batch 0`. If the production
+bottle still reads full, a new batch starts after `level_debounce` seconds, so empty
+or refill the bottle first.
 
 **Bench tests:** `force production`, `force settling`, `force transfer` and
 `force standby` jump directly to a state so you can check each relay. `report` sends an

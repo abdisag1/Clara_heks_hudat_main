@@ -55,8 +55,18 @@ void MainboardApp::begin() {
   // Resume an interrupted batch, if any.
   uint8_t saved[kCycleProgressSize];
   if (progressStore_.load(saved)) {
-    cycle_.restore(decodeProgress(saved), nowMs);
+    CycleProgress progress = decodeProgress(saved);
+    const bool interrupted = progress.state != kStateStandby;
+    if (interrupted && params_.get(kResumeBatch) < 0.5f) {
+      // Resume disabled: start in standby, but keep the batch counter and the
+      // electrode polarity so the reversal schedule stays correct.
+      progress.state = kStateStandby;
+      progress.elapsedMinutes = 0;
+      status_.progressDiscarded = true;
+    }
+    cycle_.restore(progress, nowMs);
     status_.progressRestored = cycle_.state() != kStateStandby;
+    if (status_.progressDiscarded) persistProgress(nowMs, true);
   } else {
     cycle_.begin(nowMs);
   }
@@ -76,6 +86,11 @@ void MainboardApp::begin() {
 
 void MainboardApp::loadCalibration() {
   status_.calibrationLoad = persistence_.load(params_);
+  if (status_.calibrationLoad == ParamPersistence::kLoadExtended) {
+    // Saved by a firmware with fewer parameters: keep the values, add the new defaults.
+    persistence_.save(params_);
+    status_.calibrationLoad = ParamPersistence::kLoadOk;
+  }
   if (status_.calibrationLoad == ParamPersistence::kLoadEmpty) importLegacySettings();
 }
 
@@ -214,11 +229,11 @@ void MainboardApp::forceState(ProcessState state) {
   const uint32_t nowMs = clock_.millis();
   cycle_.forceState(state, nowMs);
   io_.applyOutputs(cycle_.outputs());
-  persistProgress(nowMs);
+  persistProgress(nowMs, true);
 }
 
-void MainboardApp::persistProgress(uint32_t nowMs) {
-  if (!cycle_.takePersistRequest(nowMs)) return;
+void MainboardApp::persistProgress(uint32_t nowMs, bool force) {
+  if (!cycle_.takePersistRequest(nowMs) && !force) return;
   uint8_t bytes[kCycleProgressSize];
   encodeProgress(cycle_.progress(nowMs), bytes);
   progressStore_.save(bytes);

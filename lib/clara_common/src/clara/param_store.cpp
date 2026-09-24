@@ -45,9 +45,10 @@ int16_t ParamStore::find(const char* key) const {
   return -1;
 }
 
-uint16_t ParamStore::schemaId() const {
-  uint16_t crc = crc16(&count_, 1);
-  for (uint8_t i = 0; i < count_; ++i) {
+uint16_t ParamStore::schemaId(uint8_t count) const {
+  if (count > count_) count = count_;
+  uint16_t crc = crc16(&count, 1);
+  for (uint8_t i = 0; i < count; ++i) {
     const char* name = info(i).name;
     for (;;) {
       const uint8_t c = clara_read_byte_P(name++);
