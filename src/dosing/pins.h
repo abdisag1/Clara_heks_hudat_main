@@ -1,0 +1,24 @@
+/**
+ * @file pins.h
+ * @brief Wiring of the dosing board (Arduino Uno). Unchanged from v2.2.
+ */
+#ifndef CLARA_DOSING_PINS_H
+#define CLARA_DOSING_PINS_H
+
+#include <Arduino.h>
+
+namespace pins {
+
+const uint8_t kFlowMeter = 3;       ///< Flowmeter pulse output (external interrupt INT1).
+const uint8_t kPumpStep = 10;       ///< Stepper driver STEP (toggled by the Timer1 interrupt).
+const uint8_t kPumpDirection = 8;   ///< Stepper driver DIR.
+const uint8_t kPumpEnable = 7;      ///< Stepper driver ENABLE, active LOW.
+const uint8_t kPumpRelay = 6;       ///< Pump power relay, HIGH = powered.
+const uint8_t kChemicalLevel = A3;  ///< NaClO tank level from main board pin 9, HIGH = available.
+
+/** DIR level for forward pumping. v2.2 effectively drove DIR HIGH (pump.cpp). */
+const uint8_t kPumpForward = HIGH;
+
+}  // namespace pins
+
+#endif  // CLARA_DOSING_PINS_H

@@ -1,0 +1,25 @@
+/**
+ * @file clock.h
+ * @brief Time source abstraction so application logic can run on simulated time.
+ */
+#ifndef CLARA_CLOCK_H
+#define CLARA_CLOCK_H
+
+#include <stdint.h>
+
+namespace clara {
+
+class Clock {
+ public:
+  /** Milliseconds since start-up; wraps after ~49.7 days. */
+  virtual uint32_t millis() const = 0;
+  /** Microseconds since start-up; wraps after ~71.6 minutes. */
+  virtual uint32_t micros() const = 0;
+
+ protected:
+  ~Clock() {}
+};
+
+}  // namespace clara
+
+#endif  // CLARA_CLOCK_H

@@ -1,0 +1,55 @@
+/**
+ * @file byte_codec.h
+ * @brief Explicit little-endian serialisation helpers.
+ *
+ * Structures are never sent or stored with memcpy of the whole struct: padding
+ * and layout differ between compilers (AVR vs. host), and an explicit byte
+ * order makes the wire format a documented contract.
+ */
+#ifndef CLARA_BYTE_CODEC_H
+#define CLARA_BYTE_CODEC_H
+
+#include <stdint.h>
+#include <string.h>
+
+namespace clara {
+
+static_assert(sizeof(float) == 4, "The protocol assumes IEEE-754 single precision floats");
+
+inline void putU16(uint8_t* out, uint16_t value) {
+  out[0] = static_cast<uint8_t>(value);
+  out[1] = static_cast<uint8_t>(value >> 8);
+}
+
+inline uint16_t getU16(const uint8_t* in) {
+  return static_cast<uint16_t>(in[0] | (static_cast<uint16_t>(in[1]) << 8));
+}
+
+inline void putU32(uint8_t* out, uint32_t value) {
+  out[0] = static_cast<uint8_t>(value);
+  out[1] = static_cast<uint8_t>(value >> 8);
+  out[2] = static_cast<uint8_t>(value >> 16);
+  out[3] = static_cast<uint8_t>(value >> 24);
+}
+
+inline uint32_t getU32(const uint8_t* in) {
+  return static_cast<uint32_t>(in[0]) | (static_cast<uint32_t>(in[1]) << 8) |
+         (static_cast<uint32_t>(in[2]) << 16) | (static_cast<uint32_t>(in[3]) << 24);
+}
+
+inline void putF32(uint8_t* out, float value) {
+  uint32_t bits;
+  memcpy(&bits, &value, sizeof(bits));
+  putU32(out, bits);
+}
+
+inline float getF32(const uint8_t* in) {
+  const uint32_t bits = getU32(in);
+  float value;
+  memcpy(&value, &bits, sizeof(value));
+  return value;
+}
+
+}  // namespace clara
+
+#endif  // CLARA_BYTE_CODEC_H

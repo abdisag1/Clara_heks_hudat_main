@@ -1,0 +1,50 @@
+/**
+ * @file mainboard_console.h
+ * @brief Serial console of the main board (calibration and bench tests).
+ *
+ * Note: the main board's Serial port is shared with the RS485 link to the
+ * Ecophi unit, so console replies are also transmitted on RS485. They never
+ * start with ';', so the Ecophi parser ignores them.
+ */
+#ifndef CLARA_MAINBOARD_CONSOLE_H
+#define CLARA_MAINBOARD_CONSOLE_H
+
+#include "clara/line_reader.h"
+#include "clara/mainboard/mainboard_app.h"
+#include "clara/param_console.h"
+#include "clara/text_output.h"
+
+namespace clara {
+namespace mainboard {
+
+/**
+ * Commands:
+ *   help | cal               command list
+ *   status                   process state, sensors, dosing link
+ *   get / set / defaults     calibration parameters
+ *   force <standby|production|settling|transfer>   jump to a state (bench test)
+ *   report                   send an Ecophi frame now
+ */
+class MainboardConsole {
+ public:
+  MainboardConsole(MainboardApp& app, TextOutput& out);
+
+  void onChar(char c);
+  void printBanner();
+
+ private:
+  void execute(char* line);
+  void printHelp();
+  void printStatus();
+  void handleForce(char** tokens, uint8_t count);
+
+  MainboardApp& app_;
+  TextOutput& out_;
+  LineReader reader_;
+  ParamConsole paramConsole_;
+};
+
+}  // namespace mainboard
+}  // namespace clara
+
+#endif  // CLARA_MAINBOARD_CONSOLE_H

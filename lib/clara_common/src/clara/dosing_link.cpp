@@ -1,0 +1,40 @@
+#include "clara/dosing_link.h"
+
+#include "clara/byte_codec.h"
+#include "clara/crc.h"
+
+namespace clara {
+namespace link {
+
+void encodeTelemetry(const DosingTelemetry& telemetry, uint8_t* frame) {
+  frame[0] = kProtocolVersion;
+  frame[1] = telemetry.sequence;
+  frame[2] = telemetry.flags;
+  putF32(frame + 3, telemetry.flowLpm);
+  putF32(frame + 7, telemetry.lastDoseMl);
+  putU32(frame + 11, telemetry.totalWaterL);
+  putU32(frame + 15, telemetry.totalNaclOMicroL);
+  putF32(frame + 19, telemetry.targetFrcMgL);
+  putU32(frame + 23, telemetry.uptimeS);
+  frame[27] = crc8(frame, kTelemetryFrameSize - 1u);
+}
+
+DecodeResult decodeTelemetry(const uint8_t* frame, uint8_t length, DosingTelemetry& out) {
+  if (length != kTelemetryFrameSize) return kDecodeBadLength;
+  // Check the CRC first: a corrupted version byte should read as a CRC error.
+  if (crc8(frame, kTelemetryFrameSize - 1u) != frame[27]) return kDecodeBadCrc;
+  if (frame[0] != kProtocolVersion) return kDecodeBadVersion;
+
+  out.sequence = frame[1];
+  out.flags = frame[2];
+  out.flowLpm = getF32(frame + 3);
+  out.lastDoseMl = getF32(frame + 7);
+  out.totalWaterL = getU32(frame + 11);
+  out.totalNaclOMicroL = getU32(frame + 15);
+  out.targetFrcMgL = getF32(frame + 19);
+  out.uptimeS = getU32(frame + 23);
+  return kDecodeOk;
+}
+
+}  // namespace link
+}  // namespace clara

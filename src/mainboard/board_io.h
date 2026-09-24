@@ -1,0 +1,47 @@
+/**
+ * @file board_io.h
+ * @brief AVR implementations of the main-board hardware interfaces.
+ */
+#ifndef CLARA_MAINBOARD_BOARD_IO_H
+#define CLARA_MAINBOARD_BOARD_IO_H
+
+#include <Arduino.h>
+#include <LiquidCrystal_I2C.h>
+
+#include "clara/mainboard/display_pages.h"
+#include "clara/mainboard/mainboard_hal.h"
+
+/** Relays, level sensors and the voltage sensor. */
+class BoardIo : public clara::mainboard::MainboardIo {
+ public:
+  /** Configures the pins with every output off; call from setup(). */
+  void begin();
+
+  bool readLevelSensor(uint8_t index) override;
+  uint16_t readVoltageAdc() override;
+  void applyOutputs(const clara::mainboard::CycleOutputs& outputs) override;
+  void setChemicalAvailableSignal(bool available) override;
+};
+
+/** Dosing board telemetry over I2C (this board is the bus master). */
+class I2cDosingLink : public clara::mainboard::DosingLinkPort {
+ public:
+  uint8_t requestFrame(uint8_t* buffer, uint8_t capacity) override;
+};
+
+/** 20x4 I2C LCD; only rewrites lines whose text changed. */
+class LcdDisplay : public clara::mainboard::CharacterDisplay {
+ public:
+  explicit LcdDisplay(LiquidCrystal_I2C& lcd) : lcd_(lcd) { invalidate(); }
+
+  void begin();
+  void writeLine(uint8_t row, const char* text) override;
+
+ private:
+  void invalidate();
+
+  LiquidCrystal_I2C& lcd_;
+  clara::mainboard::LcdLine shown_[clara::mainboard::kLcdRows];
+};
+
+#endif  // CLARA_MAINBOARD_BOARD_IO_H

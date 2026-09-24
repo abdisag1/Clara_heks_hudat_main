@@ -1,0 +1,88 @@
+/**
+ * @file param_store.h
+ * @brief Table-driven, range-checked calibration parameters.
+ *
+ * Every tunable value of a board (production time, target FRC, pump volume per
+ * revolution, ...) is described once in a flash-resident table: name, unit,
+ * help text, allowed range and default. Consoles, EEPROM persistence and the
+ * application all work from that single table, so adding a parameter is a
+ * one-line change and invalid values can never reach the control code.
+ */
+#ifndef CLARA_PARAM_STORE_H
+#define CLARA_PARAM_STORE_H
+
+#include <stdint.h>
+
+namespace clara {
+
+/** Description of one parameter. Instances live in flash (CLARA_PROGMEM). */
+struct ParamInfo {
+  const char* name;     ///< Console name, flash string, e.g. "target_frc".
+  const char* unit;     ///< Unit shown to the user, flash string, e.g. "mg/L".
+  const char* help;     ///< One-line description, flash string.
+  float minValue;       ///< Smallest accepted value (inclusive).
+  float maxValue;       ///< Largest accepted value (inclusive).
+  float defaultValue;   ///< Factory default.
+  uint8_t decimals;     ///< Decimals used when printing.
+};
+
+/** Result of ParamStore::set(). */
+enum SetResult {
+  kSetOk = 0,
+  kSetUnknownParameter,
+  kSetOutOfRange,
+};
+
+/**
+ * Holds the current values for a parameter table. The storage array is owned
+ * by the caller so its size is known at compile time (no heap).
+ */
+class ParamStore {
+ public:
+  /**
+   * @param flashTable parameter descriptions, stored in flash.
+   * @param count      number of entries in @p flashTable and @p values.
+   * @param values     caller-provided storage for the current values.
+   */
+  ParamStore(const ParamInfo* flashTable, uint8_t count, float* values);
+
+  uint8_t count() const { return count_; }
+
+  /** Copies the description of parameter @p index out of flash. */
+  ParamInfo info(uint8_t index) const;
+
+  /** Current value. Returns 0 for an invalid index. */
+  float get(uint8_t index) const { return index < count_ ? values_[index] : 0.0f; }
+
+  /** Validates and stores a new value. The previous value is kept on error. */
+  SetResult set(uint8_t index, float value);
+
+  /** True if @p value is a finite number inside the allowed range. */
+  bool isValid(uint8_t index, float value) const;
+
+  /** Restores every parameter to its factory default. */
+  void resetToDefaults();
+
+  /**
+   * Looks a parameter up by name (case-insensitive) or by its number in the
+   * table ("0", "1", ... as shown by the console's `get` command).
+   * @return the index, or -1 if nothing matches.
+   */
+  int16_t find(const char* key) const;
+
+  /**
+   * A 16-bit fingerprint of the table layout (names and order). Stored with the
+   * EEPROM record so that data written by a firmware with a different table is
+   * never misinterpreted after an update.
+   */
+  uint16_t schemaId() const;
+
+ private:
+  const ParamInfo* table_;
+  float* values_;
+  uint8_t count_;
+};
+
+}  // namespace clara
+
+#endif  // CLARA_PARAM_STORE_H

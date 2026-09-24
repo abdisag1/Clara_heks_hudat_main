@@ -1,0 +1,67 @@
+/**
+ * @file main.cpp
+ * @brief Clara v3 dosing board (Arduino Uno).
+ *
+ * Measures the water flow and injects a proportional volume of NaClO with a
+ * stepper-driven peristaltic pump. Reports to the main board over I2C and
+ * offers a calibration / test console on the USB serial port (9600 baud).
+ *
+ * All logic lives in lib/clara_dosing (unit tested on the PC); this file only
+ * creates the hardware drivers and wires them together.
+ */
+#include <Arduino.h>
+#include <avr/wdt.h>
+
+#include "clara/arduino/arduino_clock.h"
+#include "clara/arduino/eeprom_device.h"
+#include "clara/arduino/pin_input.h"
+#include "clara/arduino/print_output.h"
+#include "clara/dosing/dosing_app.h"
+#include "clara/dosing/dosing_console.h"
+#include "flow_sensor.h"
+#include "pins.h"
+#include "stepper_pump.h"
+#include "telemetry_slave.h"
+
+namespace {
+
+// Global objects only store configuration in their constructors; hardware is
+// initialised in setup(), after the Arduino core's init() (v2.2 configured
+// timers in constructors, which the core then overwrote).
+clara::ArduinoClock gClock;
+InterruptFlowSensor gFlowSensor(pins::kFlowMeter);
+StepperPump gPump(pins::kPumpStep, pins::kPumpDirection, pins::kPumpEnable, pins::kPumpRelay);
+clara::PinInput gChemicalLevel(pins::kChemicalLevel, true);
+clara::ArduinoEeprom gEeprom;
+I2cTelemetrySlave gTelemetry;
+clara::PrintOutput gConsoleOutput(Serial);
+
+clara::dosing::DosingApp gApp(gClock, gFlowSensor, gPump, gChemicalLevel, gEeprom, gTelemetry);
+clara::dosing::DosingConsole gConsole(gApp, gConsoleOutput);
+
+}  // namespace
+
+void setup() {
+  wdt_disable();  // in case the previous reset was a watchdog reset
+  Serial.begin(9600);
+
+  gPump.begin();
+  gChemicalLevel.begin();
+  gFlowSensor.begin();
+  gTelemetry.begin();
+
+  gApp.begin();
+  gConsole.printBanner();
+
+  // Resets the board if loop() ever stalls for 2 s; the pump stops (Timer1 is
+  // reset) and dosing restarts cleanly. The Uno's Optiboot loader supports it.
+  wdt_enable(WDTO_2S);
+}
+
+void loop() {
+  wdt_reset();
+  while (Serial.available() > 0) gConsole.onChar(static_cast<char>(Serial.read()));
+  gApp.update();
+  gPump.service();
+  gConsole.update();
+}

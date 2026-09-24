@@ -1,0 +1,21 @@
+/**
+ * @file crc.h
+ * @brief Checksums used for EEPROM records and the inter-board link.
+ */
+#ifndef CLARA_CRC_H
+#define CLARA_CRC_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+namespace clara {
+
+/** CRC-8/SMBUS (poly 0x07, init 0x00). Check value for "123456789" is 0xF4. */
+uint8_t crc8(const uint8_t* data, size_t length, uint8_t crc = 0x00);
+
+/** CRC-16/CCITT-FALSE (poly 0x1021, init 0xFFFF). Check value for "123456789" is 0x29B1. */
+uint16_t crc16(const uint8_t* data, size_t length, uint16_t crc = 0xFFFF);
+
+}  // namespace clara
+
+#endif  // CLARA_CRC_H

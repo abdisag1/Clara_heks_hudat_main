@@ -1,0 +1,41 @@
+/**
+ * @file dosing_params.h
+ * @brief Calibration parameters of the dosing board.
+ *
+ * All values are stored in the dosing board's EEPROM and can be changed from
+ * its USB serial console (`set <name> <value>`), see docs/CALIBRATION.md.
+ */
+#ifndef CLARA_DOSING_PARAMS_H
+#define CLARA_DOSING_PARAMS_H
+
+#include "clara/param_store.h"
+
+namespace clara {
+namespace dosing {
+
+/** Parameter indices. The order is the console numbering; append new entries at the end. */
+enum Param {
+  kTargetFrc = 0,       ///< Free residual chlorine to reach in the treated water, mg/L.
+  kNaclOStrength,       ///< Active chlorine in the produced NaClO solution, g/L.
+  kDoseIntervalS,       ///< Dosing control period, s.
+  kPumpStepsPerRev,     ///< Driver micro-steps per pump-head revolution.
+  kPumpMlPerRev,        ///< NaClO delivered per revolution, mL (pump calibration).
+  kFlowKFactor,         ///< Flowmeter pulse frequency per unit flow, Hz per L/min.
+  kFlowCorrThreshold,   ///< Flow above which the linear correction applies, L/min.
+  kFlowCorrGain,        ///< Correction: Q = gain * Qraw + offset.
+  kFlowCorrOffset,      ///< Correction offset, L/min.
+  kCoefLowFlow,         ///< Dose multiplier at or below coef_band_lpm.
+  kCoefHighFlow,        ///< Dose multiplier above coef_band_lpm.
+  kCoefBandLpm,         ///< Flow separating the two dose multipliers, L/min.
+  kPumpMaxStepRate,     ///< Fastest step rate the pump may be driven at, steps/s.
+  kPumpTestStepRate,    ///< Step rate used for manual dose and pump calibration, steps/s.
+  kParamCount
+};
+
+/** The flash-resident parameter table (kParamCount entries). */
+const ParamInfo* parameterTable();
+
+}  // namespace dosing
+}  // namespace clara
+
+#endif  // CLARA_DOSING_PARAMS_H

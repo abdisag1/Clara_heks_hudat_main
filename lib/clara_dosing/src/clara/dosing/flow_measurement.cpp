@@ -1,0 +1,72 @@
+#include "clara/dosing/flow_measurement.h"
+
+namespace clara {
+namespace dosing {
+
+float frequencyToFlowLpm(const FlowCalibration& calibration, float frequencyHz) {
+  if (frequencyHz <= 0.0f || calibration.kFactorHzPerLpm <= 0.0f) return 0.0f;
+  float flow = frequencyHz / calibration.kFactorHzPerLpm;
+  if (flow >= calibration.correctionThresholdLpm) {
+    flow = calibration.correctionGain * flow + calibration.correctionOffsetLpm;
+  }
+  return flow > 0.0f ? flow : 0.0f;
+}
+
+PulseFrequencyMeter::PulseFrequencyMeter(uint32_t timeoutUs)
+    : timeoutUs_(timeoutUs), lastCount_(0), lastPulseUs_(0), haveReference_(false), frequencyHz_(0.0f) {}
+
+void PulseFrequencyMeter::reset(const PulseSnapshot& snapshot) {
+  lastCount_ = snapshot.count;
+  lastPulseUs_ = snapshot.lastPulseUs;
+  haveReference_ = false;
+  frequencyHz_ = 0.0f;
+}
+
+float PulseFrequencyMeter::update(const PulseSnapshot& snapshot, uint32_t nowUs) {
+  const uint32_t newPulses = snapshot.count - lastCount_;
+
+  if (newPulses > 0) {
+    if (haveReference_) {
+      // N pulses after the reference pulse span exactly N periods.
+      const uint32_t spanUs = snapshot.lastPulseUs - lastPulseUs_;
+      if (spanUs > 0) frequencyHz_ = static_cast<float>(newPulses) * 1.0e6f / static_cast<float>(spanUs);
+    }
+    // The newest pulse becomes the reference for the next measurement.
+    lastCount_ = snapshot.count;
+    lastPulseUs_ = snapshot.lastPulseUs;
+    haveReference_ = true;
+    return frequencyHz_;
+  }
+
+  // No new pulse in this window.
+  const uint32_t silenceUs = nowUs - lastPulseUs_;
+  if (!haveReference_ || silenceUs >= timeoutUs_) {
+    // Flow stopped. Also drop the reference: micros() wraps every 71 minutes,
+    // so an old timestamp must not be used to time the next pulse.
+    haveReference_ = false;
+    frequencyHz_ = 0.0f;
+  } else {
+    // The next pulse is at least silenceUs away, so f <= 1 / silence.
+    const float upperBound = 1.0e6f / static_cast<float>(silenceUs);
+    if (frequencyHz_ > upperBound) frequencyHz_ = upperBound;
+  }
+  return frequencyHz_;
+}
+
+void VolumeTotalizer::add(float liters) {
+  if (!(liters > 0.0f)) return;  // also rejects NaN
+  fraction_ += liters;
+  if (fraction_ >= 1.0f) {
+    const uint32_t whole = static_cast<uint32_t>(fraction_);
+    wholeLiters_ += whole;
+    fraction_ -= static_cast<float>(whole);
+  }
+}
+
+float kFactorFromBucketTest(uint32_t pulses, float liters) {
+  if (pulses == 0 || !(liters > 0.0f)) return 0.0f;
+  return static_cast<float>(pulses) / liters / 60.0f;
+}
+
+}  // namespace dosing
+}  // namespace clara

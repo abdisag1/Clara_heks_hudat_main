@@ -1,0 +1,38 @@
+/**
+ * @file text_output.h
+ * @brief Minimal character sink used by consoles and report generators.
+ *
+ * Business logic prints through this interface instead of calling Serial
+ * directly, which keeps it free of Arduino dependencies and lets unit tests
+ * capture the output in a string.
+ */
+#ifndef CLARA_TEXT_OUTPUT_H
+#define CLARA_TEXT_OUTPUT_H
+
+#include <stdint.h>
+
+namespace clara {
+
+class TextOutput {
+ public:
+  /** Writes a NUL-terminated string located in RAM. */
+  virtual void write(const char* text) = 0;
+  /** Writes a NUL-terminated string located in flash (see CLARA_F). */
+  virtual void writeFlash(const char* flashText) = 0;
+
+  void print(const char* text) { write(text); }
+  void printFlash(const char* flashText) { writeFlash(flashText); }
+  void printFloat(float value, uint8_t decimals);
+  void printUInt(uint32_t value);
+  void printInt(int32_t value);
+  void newline();
+  /** Convenience: flash text followed by a line break. */
+  void printLineFlash(const char* flashText);
+
+ protected:
+  ~TextOutput() {}
+};
+
+}  // namespace clara
+
+#endif  // CLARA_TEXT_OUTPUT_H

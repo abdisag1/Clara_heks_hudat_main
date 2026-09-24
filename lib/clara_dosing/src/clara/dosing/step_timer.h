@@ -1,0 +1,37 @@
+/**
+ * @file step_timer.h
+ * @brief Timer1 settings for a requested step rate (pure maths, unit tested).
+ *
+ * The pump's STEP signal is produced by the Timer1 compare-match interrupt in
+ * CTC mode, which toggles the pin every half period. This file computes the
+ * prescaler and compare value; the register access is in src/dosing.
+ */
+#ifndef CLARA_STEP_TIMER_H
+#define CLARA_STEP_TIMER_H
+
+#include <stdint.h>
+
+namespace clara {
+namespace dosing {
+
+struct Timer1Setting {
+  uint16_t prescaler;     ///< 1, 8, 64, 256 or 1024. 0 means "rate not achievable".
+  uint8_t clockSelect;    ///< CS12..CS10 bits for TCCR1B.
+  uint16_t compareValue;  ///< OCR1A; interrupt period = (compareValue + 1) * prescaler / F_CPU.
+};
+
+/**
+ * Chooses the smallest prescaler that can represent the half period of
+ * @p stepRateHz (best resolution) and rounds the compare value to the nearest
+ * tick.
+ * @param cpuHz timer input clock (F_CPU, 16 MHz on the Uno).
+ */
+Timer1Setting timer1ForStepRate(uint32_t cpuHz, uint32_t stepRateHz);
+
+/** The step rate actually produced by @p setting (for tests and diagnostics). */
+float actualStepRate(uint32_t cpuHz, const Timer1Setting& setting);
+
+}  // namespace dosing
+}  // namespace clara
+
+#endif  // CLARA_STEP_TIMER_H

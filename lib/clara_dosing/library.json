@@ -1,0 +1,10 @@
+{
+  "name": "clara_dosing",
+  "version": "3.0.0",
+  "description": "Hardware-independent dosing logic of the Clara dosing board: flow measurement, NaClO dose calculation, pump scheduling and calibration.",
+  "frameworks": "*",
+  "platforms": "*",
+  "build": {
+    "flags": "-Wall -Wextra"
+  }
+}

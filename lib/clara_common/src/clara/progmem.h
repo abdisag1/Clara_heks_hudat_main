@@ -1,0 +1,38 @@
+/**
+ * @file progmem.h
+ * @brief Portable access to constant data stored in flash.
+ *
+ * AVR micro-controllers have separate address spaces for flash and RAM. The
+ * Arduino Uno only has 2 KiB of RAM, so parameter tables and console texts are
+ * kept in flash (PROGMEM) and copied out on demand. On the host (unit tests) the
+ * macros collapse to the ordinary C library functions, so the same code runs in
+ * both places.
+ */
+#ifndef CLARA_PROGMEM_H
+#define CLARA_PROGMEM_H
+
+#include <string.h>
+
+#if defined(__AVR__)
+#include <avr/pgmspace.h>
+
+#define CLARA_PROGMEM PROGMEM
+/** Places a string literal in flash and yields a pointer to it (like PSTR). */
+#define CLARA_F(literal) PSTR(literal)
+#define clara_memcpy_P memcpy_P
+#define clara_strcasecmp_P strcasecmp_P
+#define clara_strlen_P strlen_P
+#define clara_read_byte_P(address) pgm_read_byte(address)
+
+#else  // Host build: flash and RAM are the same address space.
+#include <strings.h>
+
+#define CLARA_PROGMEM
+#define CLARA_F(literal) (literal)
+#define clara_memcpy_P memcpy
+#define clara_strcasecmp_P strcasecmp
+#define clara_strlen_P strlen
+#define clara_read_byte_P(address) (*(const unsigned char*)(address))
+#endif
+
+#endif  // CLARA_PROGMEM_H

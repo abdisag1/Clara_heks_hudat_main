@@ -1,0 +1,47 @@
+/**
+ * @file stepper_pump.h
+ * @brief PumpDriver that generates STEP pulses from the Timer1 interrupt.
+ *
+ * Timer1 runs in CTC mode and interrupts twice per step (rising and falling
+ * edge). The pulse train is therefore exact to the crystal and completely
+ * independent of what loop() is doing (serial output, I2C, EEPROM writes).
+ *
+ * Resources: Timer1 and its COMPA interrupt (so PWM on pins 9/10 and the Servo
+ * library are unavailable, which the board does not use).
+ */
+#ifndef CLARA_STEPPER_PUMP_H
+#define CLARA_STEPPER_PUMP_H
+
+#include <Arduino.h>
+
+#include "clara/dosing/dosing_hal.h"
+
+class StepperPump : public clara::dosing::PumpDriver {
+ public:
+  StepperPump(uint8_t stepPin, uint8_t directionPin, uint8_t enablePin, uint8_t relayPin);
+
+  /** Configures pins and Timer1; call from setup(). */
+  void begin();
+
+  /** Housekeeping from loop(): releases the motor when the queue is empty. */
+  void service();
+
+  void addSteps(uint32_t steps) override;
+  void setStepRate(uint32_t stepsPerSecond) override;
+  void abort() override;
+  uint32_t pendingSteps() const override;
+  uint32_t executedSteps() const override;
+
+ private:
+  void startTimerIfNeeded();
+
+  uint8_t stepPin_;
+  uint8_t directionPin_;
+  uint8_t enablePin_;
+  uint8_t relayPin_;
+  uint32_t rateHz_;
+  uint8_t clockSelect_;
+  bool driverEnabled_;
+};
+
+#endif  // CLARA_STEPPER_PUMP_H

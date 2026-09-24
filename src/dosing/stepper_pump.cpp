@@ -1,0 +1,145 @@
+#include "stepper_pump.h"
+
+#include <avr/interrupt.h>
+#include <util/atomic.h>
+
+#include "clara/dosing/step_timer.h"
+#include "pins.h"
+
+namespace {
+
+// State shared with the interrupt. 32-bit values are only accessed from loop()
+// inside ATOMIC_BLOCKs because the AVR reads them one byte at a time.
+volatile uint32_t gPendingSteps = 0;
+volatile uint32_t gExecutedSteps = 0;
+volatile bool gStepHigh = false;
+volatile uint8_t* gStepPort = 0;
+uint8_t gStepMask = 0;
+
+const uint8_t kClockSelectMask = _BV(CS12) | _BV(CS11) | _BV(CS10);
+
+inline void stopTimer() { TCCR1B &= static_cast<uint8_t>(~kClockSelectMask); }
+
+}  // namespace
+
+// Half-step interrupt: a rising edge starts a step, the next interrupt ends it.
+ISR(TIMER1_COMPA_vect) {
+  if (gStepHigh) {
+    *gStepPort &= static_cast<uint8_t>(~gStepMask);
+    gStepHigh = false;
+    if (gPendingSteps == 0) stopTimer();
+  } else if (gPendingSteps != 0) {
+    *gStepPort |= gStepMask;  // drivers (A4988, DRV8825, TMC) step on this edge
+    gStepHigh = true;
+    ++gExecutedSteps;
+    --gPendingSteps;
+  } else {
+    stopTimer();
+  }
+}
+
+StepperPump::StepperPump(uint8_t stepPin, uint8_t directionPin, uint8_t enablePin, uint8_t relayPin)
+    : stepPin_(stepPin),
+      directionPin_(directionPin),
+      enablePin_(enablePin),
+      relayPin_(relayPin),
+      rateHz_(0),
+      clockSelect_(0),
+      driverEnabled_(false) {}
+
+void StepperPump::begin() {
+  pinMode(stepPin_, OUTPUT);
+  digitalWrite(stepPin_, LOW);
+  pinMode(directionPin_, OUTPUT);
+  digitalWrite(directionPin_, pins::kPumpForward);
+  pinMode(enablePin_, OUTPUT);
+  digitalWrite(enablePin_, HIGH);  // disabled until there is work
+  pinMode(relayPin_, OUTPUT);
+  digitalWrite(relayPin_, HIGH);   // pump power on (as v2.2)
+
+  gStepPort = portOutputRegister(digitalPinToPort(stepPin_));
+  gStepMask = digitalPinToBitMask(stepPin_);
+
+  // Timer1: CTC mode 4 (TOP = OCR1A), stopped, compare-A interrupt enabled.
+  // This runs in setup(), after the Arduino core's init() has configured Timer1
+  // for analogWrite(); v2.2 did it in a global constructor, before init(), so
+  // the core silently overwrote its settings.
+  ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+    TCCR1A = 0;
+    TCCR1B = _BV(WGM12);
+    TCNT1 = 0;
+    TIFR1 = _BV(OCF1A);
+    TIMSK1 = _BV(OCIE1A);
+  }
+}
+
+void StepperPump::startTimerIfNeeded() {
+  if (clockSelect_ == 0) return;
+  ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+    if (gPendingSteps != 0 && (TCCR1B & kClockSelectMask) == 0) {
+      TCNT1 = 0;
+      TCCR1B = static_cast<uint8_t>(_BV(WGM12) | clockSelect_);
+    }
+  }
+}
+
+void StepperPump::addSteps(uint32_t steps) {
+  if (steps == 0) return;
+  if (!driverEnabled_) {
+    digitalWrite(enablePin_, LOW);
+    driverEnabled_ = true;
+    delayMicroseconds(5);  // driver wake-up time before the first edge
+  }
+  ATOMIC_BLOCK(ATOMIC_RESTORESTATE) { gPendingSteps += steps; }
+  startTimerIfNeeded();
+}
+
+void StepperPump::setStepRate(uint32_t stepsPerSecond) {
+  if (stepsPerSecond == rateHz_) return;
+  rateHz_ = stepsPerSecond;
+  const clara::dosing::Timer1Setting setting = clara::dosing::timer1ForStepRate(F_CPU, stepsPerSecond);
+  clockSelect_ = setting.clockSelect;
+
+  ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+    if (clockSelect_ == 0) {
+      stopTimer();  // rate 0 = pause; the queue is kept
+    } else {
+      OCR1A = setting.compareValue;
+      // Restart the count so a smaller OCR1A cannot be overrun (which would
+      // make the counter run to 65535 and produce one very long step).
+      TCNT1 = 0;
+      if ((TCCR1B & kClockSelectMask) != 0) TCCR1B = static_cast<uint8_t>(_BV(WGM12) | clockSelect_);
+    }
+  }
+  startTimerIfNeeded();
+}
+
+void StepperPump::abort() {
+  ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+    stopTimer();
+    gPendingSteps = 0;
+    *gStepPort &= static_cast<uint8_t>(~gStepMask);
+    gStepHigh = false;
+  }
+  digitalWrite(enablePin_, HIGH);
+  driverEnabled_ = false;
+}
+
+void StepperPump::service() {
+  if (driverEnabled_ && pendingSteps() == 0 && !gStepHigh) {
+    digitalWrite(enablePin_, HIGH);  // idle: release the motor (keeps it cool)
+    driverEnabled_ = false;
+  }
+}
+
+uint32_t StepperPump::pendingSteps() const {
+  uint32_t value;
+  ATOMIC_BLOCK(ATOMIC_RESTORESTATE) { value = gPendingSteps; }
+  return value;
+}
+
+uint32_t StepperPump::executedSteps() const {
+  uint32_t value;
+  ATOMIC_BLOCK(ATOMIC_RESTORESTATE) { value = gExecutedSteps; }
+  return value;
+}

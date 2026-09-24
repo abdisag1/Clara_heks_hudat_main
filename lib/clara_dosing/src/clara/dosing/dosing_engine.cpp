@@ -1,0 +1,78 @@
+#include "clara/dosing/dosing_engine.h"
+
+namespace clara {
+namespace dosing {
+
+namespace {
+/** Fraction of the interval the queued steps are spread over. The margin makes
+ *  the queue normally empty before the next decision, so the pump speed follows
+ *  the flow closely instead of lagging behind. */
+const uint32_t kSpreadPercent = 95;
+}  // namespace
+
+uint32_t stepRateForWindow(uint32_t steps, uint32_t windowMs, uint32_t maxRateHz) {
+  if (steps == 0) return 0;
+  if (windowMs == 0) return maxRateHz;
+  // ceil(steps * 1000 / windowMs) in 64-bit to avoid overflow for large queues.
+  const uint64_t rate = (static_cast<uint64_t>(steps) * 1000u + windowMs - 1u) / windowMs;
+  return rate > maxRateHz ? maxRateHz : static_cast<uint32_t>(rate);
+}
+
+DosingEngine::DosingEngine()
+    : settings_(), timer_(20000), maxStepRateHz_(10000), intervalStartMs_(0), waterLiters_(0.0f) {}
+
+void DosingEngine::configure(const DoseSettings& settings, uint32_t intervalMs, uint32_t maxStepRateHz) {
+  settings_ = settings;
+  timer_.setPeriod(intervalMs);
+  maxStepRateHz_ = maxStepRateHz;
+}
+
+void DosingEngine::start(uint32_t nowMs) {
+  timer_.start(nowMs);
+  intervalStartMs_ = nowMs;
+  waterLiters_ = 0.0f;
+  quantizer_.reset();
+}
+
+void DosingEngine::addWater(float liters) {
+  if (liters > 0.0f) waterLiters_ += liters;
+}
+
+bool DosingEngine::update(uint32_t nowMs, bool chemicalAvailable, uint32_t pendingSteps,
+                          DoseDecision& decision) {
+  if (!timer_.poll(nowMs)) return false;
+
+  // Use the measured interval length, not the nominal one, for the average flow.
+  const uint32_t elapsedMs = nowMs - intervalStartMs_;
+  intervalStartMs_ = nowMs;
+
+  decision.waterLiters = waterLiters_;
+  decision.averageFlowLpm = elapsedMs > 0 ? waterLiters_ * 60000.0f / static_cast<float>(elapsedMs) : 0.0f;
+  decision.coefficient = flowCoefficient(settings_, decision.averageFlowLpm);
+  decision.chemicalAvailable = chemicalAvailable;
+  waterLiters_ = 0.0f;
+
+  if (!chemicalAvailable) {
+    // No NaClO to pump: do not queue anything and let the caller flush the pump.
+    decision.doseMl = 0.0f;
+    decision.stepsToAdd = 0;
+    decision.stepRateHz = 0;
+    decision.saturated = false;
+    quantizer_.reset();
+    return true;
+  }
+
+  decision.doseMl = naclOVolumeMl(settings_, decision.waterLiters, decision.averageFlowLpm);
+  decision.stepsToAdd = quantizer_.toSteps(decision.doseMl, settings_.stepsPerMl);
+
+  const uint32_t queued = pendingSteps + decision.stepsToAdd;
+  const uint32_t windowMs = timer_.period() / 100u * kSpreadPercent;
+  decision.stepRateHz = stepRateForWindow(queued, windowMs, maxStepRateHz_);
+  // Saturated if the queue cannot be emptied within a full interval at max speed.
+  decision.saturated =
+      static_cast<uint64_t>(queued) * 1000u > static_cast<uint64_t>(maxStepRateHz_) * timer_.period();
+  return true;
+}
+
+}  // namespace dosing
+}  // namespace clara

@@ -1,0 +1,10 @@
+{
+  "name": "clara_mainboard",
+  "version": "3.0.0",
+  "description": "Hardware-independent logic of the Clara main board: NaClO production cycle, sensors, LCD pages and the Ecophi remote-monitoring report.",
+  "frameworks": "*",
+  "platforms": "*",
+  "build": {
+    "flags": "-Wall -Wextra"
+  }
+}

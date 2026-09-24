@@ -1,0 +1,31 @@
+#include "flow_sensor.h"
+
+#include <util/atomic.h>
+
+namespace {
+
+volatile uint32_t gPulseCount = 0;
+volatile uint32_t gLastPulseUs = 0;
+
+void onFlowPulse() {
+  gLastPulseUs = micros();
+  ++gPulseCount;
+}
+
+}  // namespace
+
+void InterruptFlowSensor::begin() {
+  // Hall-effect flowmeters usually have open-collector outputs; the v2.2 board
+  // has an external pull-up, so the internal one is not enabled here.
+  pinMode(pin_, INPUT);
+  attachInterrupt(digitalPinToInterrupt(pin_), onFlowPulse, RISING);
+}
+
+clara::dosing::PulseSnapshot InterruptFlowSensor::snapshot() const {
+  clara::dosing::PulseSnapshot snapshot;
+  ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+    snapshot.count = gPulseCount;
+    snapshot.lastPulseUs = gLastPulseUs;
+  }
+  return snapshot;
+}

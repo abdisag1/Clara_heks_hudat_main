@@ -1,0 +1,31 @@
+/**
+ * @file flow_sensor.h
+ * @brief FlowSensor on an external-interrupt pin.
+ */
+#ifndef CLARA_AVR_FLOW_SENSOR_H
+#define CLARA_AVR_FLOW_SENSOR_H
+
+#include <Arduino.h>
+
+#include "clara/dosing/dosing_hal.h"
+
+/**
+ * The interrupt only counts pulses and timestamps the latest one (a few
+ * microseconds of work). All maths happens in PulseFrequencyMeter in the main
+ * loop. v2.2 divided by the pulse count without checking for zero and also
+ * reset Timer1 from this interrupt, disturbing the dosing time base.
+ */
+class InterruptFlowSensor : public clara::dosing::FlowSensor {
+ public:
+  explicit InterruptFlowSensor(uint8_t pin) : pin_(pin) {}
+
+  /** Attaches the interrupt; call from setup(). */
+  void begin();
+
+  clara::dosing::PulseSnapshot snapshot() const override;
+
+ private:
+  uint8_t pin_;
+};
+
+#endif  // CLARA_AVR_FLOW_SENSOR_H

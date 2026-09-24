@@ -1,0 +1,61 @@
+#include "clara/param_store.h"
+
+#include <math.h>
+
+#include "clara/crc.h"
+#include "clara/line_reader.h"
+#include "clara/progmem.h"
+
+namespace clara {
+
+ParamStore::ParamStore(const ParamInfo* flashTable, uint8_t count, float* values)
+    : table_(flashTable), values_(values), count_(count) {
+  resetToDefaults();
+}
+
+ParamInfo ParamStore::info(uint8_t index) const {
+  ParamInfo result;
+  clara_memcpy_P(&result, &table_[index < count_ ? index : 0], sizeof(ParamInfo));
+  return result;
+}
+
+bool ParamStore::isValid(uint8_t index, float value) const {
+  if (index >= count_ || isnan(value) || isinf(value)) return false;
+  const ParamInfo description = info(index);
+  return value >= description.minValue && value <= description.maxValue;
+}
+
+SetResult ParamStore::set(uint8_t index, float value) {
+  if (index >= count_) return kSetUnknownParameter;
+  if (!isValid(index, value)) return kSetOutOfRange;
+  values_[index] = value;
+  return kSetOk;
+}
+
+void ParamStore::resetToDefaults() {
+  for (uint8_t i = 0; i < count_; ++i) values_[i] = info(i).defaultValue;
+}
+
+int16_t ParamStore::find(const char* key) const {
+  uint32_t number;
+  if (parseUInt(key, number)) return number < count_ ? static_cast<int16_t>(number) : -1;
+  for (uint8_t i = 0; i < count_; ++i) {
+    if (clara_strcasecmp_P(key, info(i).name) == 0) return i;
+  }
+  return -1;
+}
+
+uint16_t ParamStore::schemaId() const {
+  uint16_t crc = crc16(&count_, 1);
+  for (uint8_t i = 0; i < count_; ++i) {
+    const char* name = info(i).name;
+    for (;;) {
+      const uint8_t c = clara_read_byte_P(name++);
+      crc = crc16(&c, 1, crc);
+      if (c == 0) break;
+    }
+  }
+  return crc;
+}
+
+}  // namespace clara

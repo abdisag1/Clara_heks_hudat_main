@@ -1,0 +1,25 @@
+/**
+ * @file voltage.h
+ * @brief Supply voltage from the resistive divider on A3.
+ */
+#ifndef CLARA_VOLTAGE_H
+#define CLARA_VOLTAGE_H
+
+namespace clara {
+namespace mainboard {
+
+/**
+ * volts = adc / 1024 * vref * divider
+ *
+ * v2.2 constants: vref 4.85 V (the measured USB/regulator voltage, not the
+ * nominal 5 V) and divider 22.2. Both are calibration parameters now: measure
+ * the battery with a multimeter and adjust voltage_divider until they agree.
+ */
+inline float adcToVolts(float adcCounts, float referenceVolts, float dividerRatio) {
+  return adcCounts * referenceVolts / 1024.0f * dividerRatio;
+}
+
+}  // namespace mainboard
+}  // namespace clara
+
+#endif  // CLARA_VOLTAGE_H

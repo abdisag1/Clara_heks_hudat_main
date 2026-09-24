@@ -1,0 +1,21 @@
+/**
+ * @file digital_io.h
+ * @brief Tiny digital I/O interfaces so application logic can be tested with fakes.
+ */
+#ifndef CLARA_DIGITAL_IO_H
+#define CLARA_DIGITAL_IO_H
+
+namespace clara {
+
+class DigitalInput {
+ public:
+  /** @return the logical (already polarity-corrected) state. */
+  virtual bool read() const = 0;
+
+ protected:
+  ~DigitalInput() {}
+};
+
+}  // namespace clara
+
+#endif  // CLARA_DIGITAL_IO_H
