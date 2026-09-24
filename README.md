@@ -57,7 +57,8 @@ test/
   test_dosing/            unit tests
   test_mainboard/         unit tests
   test_integration/       both applications running on simulated time
-tools/export_arduino.py   exports sketches + libraries for the Arduino IDE
+arduino/                  generated, ready-to-upload Arduino IDE sketches
+tools/export_arduino.py   regenerates arduino/ from lib/ and src/
 docs/                     calibration, testing, protocol notes, v2.2 review
 legacy/v2.2/              the previous firmware, unchanged
 ```
@@ -100,16 +101,17 @@ pio device monitor               # console, 9600 baud
 
 ### Arduino IDE
 
-```sh
-python3 tools/export_arduino.py
-```
+Ready-to-upload sketches are in [`arduino/`](arduino). No Clara libraries have to be installed:
 
-1. Copy the three folders in `build/arduino/libraries/` into your Arduino `libraries` folder.
-2. Install **LiquidCrystal I2C** (Frank de Brabander) from the Library Manager.
-3. Open `build/arduino/ClaraDosing/ClaraDosing.ino` (board: Arduino Uno) or
-   `build/arduino/ClaraMainboard/ClaraMainboard.ino` (board: Arduino Mega 2560) and upload.
+1. Install **LiquidCrystal I2C** (Frank de Brabander) from the Library Manager (main board only).
+2. Open `arduino/ClaraDosing/ClaraDosing.ino`, select **Arduino Uno**, and click Upload.
+3. Open `arduino/ClaraMainboard/ClaraMainboard.ino`, select **Arduino Mega or Mega 2560**,
+   and click Upload.
 
-Re-run the export after every source change; do not edit the exported files.
+The code is in the `*_main.cpp` tab and the `src/` folder of each sketch; the `.ino`
+file is intentionally almost empty. These files are **generated** from `lib/` and `src/`:
+after changing the sources, run `python3 tools/export_arduino.py` (CI fails if
+`arduino/` is out of date).
 
 ## Running the tests
 

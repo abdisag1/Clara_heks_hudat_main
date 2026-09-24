@@ -11,6 +11,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: make test
+      - name: arduino/ sketches match lib/ and src/
+        run: python3 tools/export_arduino.py --check
 
   platformio:
     name: PlatformIO build + native tests
