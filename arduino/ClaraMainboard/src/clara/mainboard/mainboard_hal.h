@@ -40,6 +40,16 @@ class DosingLinkPort {
    */
   virtual uint8_t requestFrame(uint8_t* buffer, uint8_t capacity) = 0;
 
+  /**
+   * Diagnostics: true if a device acknowledges @p address on the bus. Used by
+   * the console's "i2c" scan. Implementations without a real bus may keep the
+   * default.
+   */
+  virtual bool probe(uint8_t address) {
+    (void)address;
+    return false;
+  }
+
  protected:
   ~DosingLinkPort() {}
 };

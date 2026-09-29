@@ -97,6 +97,8 @@ class DosingApp {
 
   const DosingStatus& status() const { return status_; }
   uint32_t pendingSteps() const { return pump_.pendingSteps(); }
+  /** Telemetry requests received from the main board (I2C diagnostics). */
+  uint32_t linkRequests() const { return telemetry_.requestCount(); }
 
  private:
   void applyParams();

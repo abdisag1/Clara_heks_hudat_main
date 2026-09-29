@@ -202,6 +202,9 @@ class LoopbackLink : public clara::mainboard::DosingLinkPort {
     if (corrupt) buffer[5] ^= 0x40;
     return n;
   }
+  bool probe(uint8_t address) override {
+    return address == 0x27 || (connected && address == 0x21);  // LCD + dosing board
+  }
   bool connected;
   bool corrupt;
 

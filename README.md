@@ -162,6 +162,10 @@ pio test -e native
   [`lib/clara_mainboard/src/clara/mainboard/ecophi_report.h`](lib/clara_mainboard/src/clara/mainboard/ecophi_report.h).
 * **Level sensor 3 (NaClO tank):** main board pin 9 → dosing board A3, HIGH = NaClO available.
 
+## Troubleshooting
+
+See [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) (I2C link, PCB jumpers).
+
 ## Pin assignments
 
 Unchanged from v2.2; see [`src/mainboard/pins.h`](src/mainboard/pins.h) and

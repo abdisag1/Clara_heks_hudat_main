@@ -52,6 +52,8 @@ void MainboardConsole::execute(char* line) {
     printStatus();
   } else if (is(tokens[0], CLARA_F("force"))) {
     handleForce(tokens, count);
+  } else if (is(tokens[0], CLARA_F("i2c"))) {
+    scanBus();
   } else if (is(tokens[0], CLARA_F("cancel"))) {
     app_.cancelBatch();
     out_.printLineFlash(CLARA_F("ok - batch cancelled, standby (will not resume after power-up)"));
@@ -68,6 +70,7 @@ void MainboardConsole::printHelp() {
   out_.printLineFlash(CLARA_F("  status                live values"));
   paramConsole_.printHelp();
   out_.printLineFlash(CLARA_F("  cancel                abandon the running batch (standby)"));
+  out_.printLineFlash(CLARA_F("  i2c                   list devices on the I2C bus"));
   out_.printLineFlash(CLARA_F("  force <standby|production|settling|transfer>"));
   out_.printLineFlash(CLARA_F("                        jump to a state (bench test)"));
   out_.printLineFlash(CLARA_F("  report                send an Ecophi frame now"));
@@ -103,6 +106,7 @@ void MainboardConsole::printStatus() {
   out_.printFlash(CLARA_F(" (errors "));
   out_.printUInt(s.linkErrors);
   out_.printLineFlash(CLARA_F(")"));
+  if (!s.linkOk) printLinkDiagnosis();
   if (s.linkOk) {
     out_.printFlash(CLARA_F("  flow "));
     out_.printFloat(s.dosing.flowLpm, 2);
@@ -118,6 +122,52 @@ void MainboardConsole::printStatus() {
       out_.printLineFlash(CLARA_F("  WARNING dosing board uses default calibration"));
     }
     if (s.dosing.flags & link::kFlagFlowSimulated) out_.printLineFlash(CLARA_F("  NOTE flow is simulated"));
+  }
+}
+
+void MainboardConsole::printLinkDiagnosis() {
+  const MainboardStatus& s = app_.status();
+  out_.printFlash(CLARA_F("  last poll - "));
+  if (s.lastLinkBytes == 0) {
+    out_.printLineFlash(CLARA_F("NO ANSWER from address 0x21"));
+    out_.printLineFlash(CLARA_F("  the dosing processor is not on the bus - check that it runs"));
+    out_.printLineFlash(CLARA_F("  (jumper J13 must be OPEN), J14 + J15 closed, then type i2c"));
+    return;
+  }
+  out_.printUInt(s.lastLinkBytes);
+  out_.printFlash(CLARA_F(" bytes, "));
+  if (s.lastLinkResult == link::kDecodeBadCrc) {
+    out_.printLineFlash(CLARA_F("checksum wrong"));
+  } else if (s.lastLinkResult == link::kDecodeBadVersion) {
+    out_.printLineFlash(CLARA_F("protocol version wrong"));
+  } else {
+    out_.printLineFlash(CLARA_F("frame length wrong"));
+  }
+  out_.printLineFlash(CLARA_F("  the dosing board answers but with other data - upload the v3"));
+  out_.printLineFlash(CLARA_F("  dosing firmware (ClaraDosing) to the dosing processor"));
+}
+
+void MainboardConsole::scanBus() {
+  out_.printLineFlash(CLARA_F("I2C scan"));
+  uint8_t found = 0;
+  for (uint8_t address = 0x08; address < 0x78; ++address) {
+    if (!app_.linkPort().probe(address)) continue;
+    ++found;
+    out_.printFlash(CLARA_F("  0x"));
+    const char digits[] = "0123456789ABCDEF";
+    const char hex[3] = {digits[address >> 4], digits[address & 0x0F], '\0'};
+    out_.write(hex);
+    if (address == link::kDosingBoardAddress) {
+      out_.printLineFlash(CLARA_F("  dosing board"));
+    } else if ((address >= 0x20 && address <= 0x27) || (address >= 0x38 && address <= 0x3F)) {
+      out_.printLineFlash(CLARA_F("  LCD backpack (PCF8574)"));
+    } else {
+      out_.printLineFlash(CLARA_F("  unknown device"));
+    }
+  }
+  if (found == 0) out_.printLineFlash(CLARA_F("  no devices - check SDA/SCL wiring and pull-ups"));
+  if (!app_.linkPort().probe(link::kDosingBoardAddress)) {
+    out_.printLineFlash(CLARA_F("  dosing board (0x21) NOT found - see status for hints"));
   }
 }
 

@@ -606,6 +606,37 @@ void test_system_rejects_corrupted_i2c_frames() {
   TEST_ASSERT_TRUE(system.main.app.status().linkOk);
 }
 
+void test_system_link_diagnostics() {
+  SystemBench system;
+  system.begin();
+  system.run(3 * kSecond);
+  system.main.type("i2c");
+  TEST_ASSERT_TRUE(system.main.serial.contains("0x21  dosing board"));
+  TEST_ASSERT_TRUE(system.main.serial.contains("0x27  LCD backpack"));
+
+  // Dosing processor not answering (held in reset, jumpers open ...).
+  system.link.connected = false;
+  system.run(6 * kSecond);
+  system.main.serial.clear();
+  system.main.type("status");
+  TEST_ASSERT_TRUE(system.main.serial.contains("NO ANSWER from address 0x21"));
+  system.main.type("i2c");
+  TEST_ASSERT_TRUE(system.main.serial.contains("dosing board (0x21) NOT found"));
+
+  // Dosing board answering with foreign data (e.g. old firmware).
+  system.link.connected = true;
+  system.link.corrupt = true;
+  system.run(6 * kSecond);
+  system.main.serial.clear();
+  system.main.type("status");
+  TEST_ASSERT_TRUE(system.main.serial.contains("28 bytes, checksum wrong"));
+  TEST_ASSERT_TRUE(system.main.serial.contains("upload the v3"));
+
+  // Dosing console reports that nobody has polled it (fake sink counts nothing).
+  system.dosing.type("status");
+  TEST_ASSERT_TRUE(system.dosing.console.contains("I2C requests from main board: 0"));
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_dosing_constant_flow_for_one_hour_is_accurate);
@@ -632,5 +663,6 @@ int main() {
   RUN_TEST(test_system_telemetry_reaches_display_and_ecophi);
   RUN_TEST(test_system_level3_low_stops_dosing_and_shows_alarm);
   RUN_TEST(test_system_rejects_corrupted_i2c_frames);
+  RUN_TEST(test_system_link_diagnostics);
   return UNITY_END();
 }

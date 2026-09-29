@@ -47,6 +47,8 @@ struct MainboardStatus {
   float voltage;
   bool linkOk;
   uint32_t linkErrors;             ///< Failed or corrupt telemetry frames since start-up.
+  uint8_t lastLinkBytes;           ///< Bytes received in the last poll (0 = no answer).
+  link::DecodeResult lastLinkResult;  ///< Validation of the last received frame.
   link::DosingTelemetry dosing;    ///< Last valid telemetry.
   ParamPersistence::LoadResult calibrationLoad;
   bool progressRestored;           ///< A batch was resumed after a power cut.
@@ -82,6 +84,7 @@ class MainboardApp {
   const MainboardStatus& status() const { return status_; }
   const ProductionCycle& cycle() const { return cycle_; }
   uint32_t now() const { return clock_.millis(); }
+  DosingLinkPort& linkPort() { return link_; }
 
  private:
   void applyParams();

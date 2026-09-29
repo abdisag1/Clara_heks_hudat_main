@@ -12,8 +12,12 @@ namespace {
 // The frame is written by loop() and read by the TWI interrupt; publish()
 // copies it with interrupts disabled so a request never sees half a frame.
 uint8_t gFrame[clara::link::kTelemetryFrameSize];
+volatile uint32_t gRequests = 0;
 
-void onRequest() { Wire.write(gFrame, sizeof(gFrame)); }
+void onRequest() {
+  Wire.write(gFrame, sizeof(gFrame));
+  ++gRequests;
+}
 
 void onReceive(int count) {
   // The master sends nothing in protocol v3; drain anything (e.g. from an old
@@ -27,6 +31,12 @@ void I2cTelemetrySlave::begin() {
   Wire.begin(clara::link::kDosingBoardAddress);
   Wire.onRequest(onRequest);
   Wire.onReceive(onReceive);
+}
+
+uint32_t I2cTelemetrySlave::requestCount() const {
+  uint32_t count;
+  ATOMIC_BLOCK(ATOMIC_RESTORESTATE) { count = gRequests; }
+  return count;
 }
 
 void I2cTelemetrySlave::publish(const uint8_t* frame, uint8_t length) {

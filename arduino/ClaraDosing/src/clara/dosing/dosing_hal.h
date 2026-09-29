@@ -52,6 +52,8 @@ class PumpDriver {
 class TelemetrySink {
  public:
   virtual void publish(const uint8_t* frame, uint8_t length) = 0;
+  /** Diagnostics: how many times the main board has requested a frame. */
+  virtual uint32_t requestCount() const { return 0; }
 
  protected:
   ~TelemetrySink() {}

@@ -167,8 +167,10 @@ void MainboardApp::sampleSensors(uint32_t nowMs) {
 void MainboardApp::pollDosingBoard(uint32_t nowMs) {
   uint8_t frame[link::kTelemetryFrameSize + 4];
   const uint8_t received = link_.requestFrame(frame, sizeof(frame));
+  status_.lastLinkBytes = received;
   link::DosingTelemetry telemetry;
-  if (received > 0 && link::decodeTelemetry(frame, received, telemetry) == link::kDecodeOk) {
+  status_.lastLinkResult = received > 0 ? link::decodeTelemetry(frame, received, telemetry) : link::kDecodeBadLength;
+  if (received > 0 && status_.lastLinkResult == link::kDecodeOk) {
     status_.dosing = telemetry;
     lastLinkOkMs_ = nowMs;
     everLinked_ = true;

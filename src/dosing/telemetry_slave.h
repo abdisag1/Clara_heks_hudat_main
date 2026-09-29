@@ -16,6 +16,7 @@ class I2cTelemetrySlave : public clara::dosing::TelemetrySink {
 
   /** Stores @p frame as the answer to the next request (thread-safe). */
   void publish(const uint8_t* frame, uint8_t length) override;
+  uint32_t requestCount() const override;
 };
 
 #endif  // CLARA_TELEMETRY_SLAVE_H

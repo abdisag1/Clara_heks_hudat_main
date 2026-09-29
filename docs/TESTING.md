@@ -98,7 +98,7 @@ monitors at 9600 baud: dosing board USB, main board USB.
 |---|---|---|
 | M1 | power up | splash screen for 5 s, then alternating pages every 2 s |
 | M2 | `status` | dosing link ok; flow as on the dosing board |
-| M3 | unplug I2C | after 5 s the LCD shows "Dosing board: NO COMMUNICATION" |
+| M3 | unplug I2C | after 5 s the LCD shows "Dosing board: NO COMMUNICATION"; `status` explains why, `i2c` lists the bus (see TROUBLESHOOTING.md) |
 | M4 | `set production_min 2`, then `force production` | electrolysis and fan relays on; LCD "Time Left: 2 min" |
 | M5 | wait 2 min | relays off, polarity relay toggles, "Settling" 5 min, then valve opens 10 min |
 | M6 | L2 (storage tank) high during settling | "Tank full" state, valve stays closed until L2 goes low |

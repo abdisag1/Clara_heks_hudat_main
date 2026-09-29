@@ -55,6 +55,11 @@ uint8_t I2cDosingLink::requestFrame(uint8_t* buffer, uint8_t capacity) {
   return received == 0 ? 0 : count;
 }
 
+bool I2cDosingLink::probe(uint8_t address) {
+  Wire.beginTransmission(address);
+  return Wire.endTransmission() == 0;  // 0 = address acknowledged
+}
+
 // --- LcdDisplay ----------------------------------------------------------------
 
 void LcdDisplay::begin() {

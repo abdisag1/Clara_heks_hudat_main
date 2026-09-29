@@ -23,6 +23,7 @@ namespace mainboard {
  *   status                   process state, sensors, dosing link
  *   get / set / defaults     calibration parameters
  *   cancel                   abandon the running batch, go to standby
+ *   i2c                      scan the I2C bus (dosing board 0x21, LCD 0x27)
  *   force <standby|production|settling|transfer>   jump to a state (bench test)
  *   report                   send an Ecophi frame now
  */
@@ -38,6 +39,8 @@ class MainboardConsole {
   void printHelp();
   void printStatus();
   void handleForce(char** tokens, uint8_t count);
+  void printLinkDiagnosis();
+  void scanBus();
 
   MainboardApp& app_;
   TextOutput& out_;

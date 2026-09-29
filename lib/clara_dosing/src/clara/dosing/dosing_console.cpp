@@ -122,6 +122,10 @@ void DosingConsole::printStatus() {
   out_.printFlash(CLARA_F(" L   NaClO total: "));
   out_.printFloat(s.totalNaclOMl, 1);
   out_.printLineFlash(CLARA_F(" mL"));
+  out_.printFlash(CLARA_F("I2C requests from main board: "));
+  out_.printUInt(app_.linkRequests());
+  out_.printLineFlash(app_.linkRequests() == 0 ? CLARA_F("  (none - check J14/J15 and the main board)")
+                                               : CLARA_F(""));
   out_.printFlash(CLARA_F("NaClO available: "));
   out_.printLineFlash(s.chemicalAvailable ? CLARA_F("yes") : CLARA_F("NO - dosing stopped"));
   out_.printFlash(CLARA_F("pump queue: "));
