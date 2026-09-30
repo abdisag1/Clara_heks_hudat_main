@@ -301,6 +301,30 @@ void test_flow_meter_selection() {
   TEST_ASSERT_TRUE(rebooted.console.contains("flow meter: 3 inch YF-DN80"));
 }
 
+void test_flow_k_can_be_adjusted_from_the_console() {
+  // flow_k is the datasheet coefficient: f [Hz] = flow_k x Q [L/min].
+  fakes::FakeClock clock;
+  fakes::FakeEeprom eeprom;
+  {
+    DosingBench bench(clock, eeprom);
+    bench.app.begin();
+    bench.type("meter 2");           // f = 0.2 Q, correction off
+    bench.type("set flow_k 0.21");   // fine-tuned after a bucket test
+    TEST_ASSERT_TRUE(bench.console.contains("flow_k = 0.2100 Hz/(L/min)"));
+    bench.flow.setFrequency(21.0);   // 21 Hz / 0.21 = 100 L/min
+    bench.run(5 * kSecond);
+    TEST_ASSERT_FLOAT_WITHIN(0.05f, 100.0f, bench.app.status().flowLpm);
+
+    bench.type("set flow_k 0.005");  // below the allowed 0.01: rejected
+    TEST_ASSERT_TRUE(bench.console.contains("out of range"));
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.21f, bench.app.params().get(dosing::kFlowKFactor));
+  }
+  DosingBench rebooted(clock, eeprom);  // the adjusted value is saved
+  rebooted.app.begin();
+  TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.21f, rebooted.app.params().get(dosing::kFlowKFactor));
+  TEST_ASSERT_EQUAL_FLOAT(2.0f, rebooted.app.params().get(dosing::kFlowMeterSize));
+}
+
 void test_dosing_keeps_calibration_saved_by_previous_firmware() {
   // EEPROM written by the previous release (14 parameters, no flow_meter).
   fakes::FakeEeprom eeprom;
@@ -706,6 +730,7 @@ int main() {
   RUN_TEST(test_pumpcal_done_without_run_is_rejected);
   RUN_TEST(test_flow_calibration_procedure);
   RUN_TEST(test_flow_meter_selection);
+  RUN_TEST(test_flow_k_can_be_adjusted_from_the_console);
   RUN_TEST(test_dosing_keeps_calibration_saved_by_previous_firmware);
   RUN_TEST(test_manual_dose_is_exact_and_not_counted_as_dosing);
   RUN_TEST(test_stop_command_aborts_pump);
