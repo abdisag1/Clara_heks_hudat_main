@@ -310,6 +310,31 @@ void test_display_process_page() {
   assertPage(lines, "State: Producing", "Time Left: 123 min", "Voltage: 13.21 V", "L1: 1 L2: 0 L3: 1");
 }
 
+void test_display_level_messages_when_idle() {
+  // Second line when no phase is counting down.
+  DisplayModel m = sampleModel();
+  LcdLine lines[kLcdRows];
+  const ProcessState idleStates[] = {kStateStandby, kStateWaitingForSpace};
+  for (uint8_t s = 0; s < 2; ++s) {
+    m.state = idleStates[s];
+    m.level3 = false;  // L3 = 0 wins over everything
+    m.level2 = true;
+    renderPage(m, 1, lines);
+    TEST_ASSERT_EQUAL_STRING("NaClO tank Empty    ", lines[1]);
+    m.level3 = true;   // L2 = 1
+    renderPage(m, 1, lines);
+    TEST_ASSERT_EQUAL_STRING("Enough NaClO        ", lines[1]);
+    m.level2 = false;  // L3 = 1, L2 = 0
+    renderPage(m, 1, lines);
+    TEST_ASSERT_EQUAL_STRING("Waiting for brine   ", lines[1]);
+  }
+  // A running phase keeps its countdown.
+  m.state = kStateProduction;
+  m.level3 = false;
+  renderPage(m, 1, lines);
+  TEST_ASSERT_EQUAL_STRING("Time Left: 123 min  ", lines[1]);
+}
+
 void test_display_alarms_and_splash() {
   DisplayModel m = sampleModel();
   LcdLine lines[kLcdRows];
@@ -371,6 +396,7 @@ int main() {
   RUN_TEST(test_dosed_rate_meter);
   RUN_TEST(test_display_dosing_page);
   RUN_TEST(test_display_process_page);
+  RUN_TEST(test_display_level_messages_when_idle);
   RUN_TEST(test_display_alarms_and_splash);
   RUN_TEST(test_display_lines_never_exceed_20_columns);
   RUN_TEST(test_voltage_conversion_matches_v22);

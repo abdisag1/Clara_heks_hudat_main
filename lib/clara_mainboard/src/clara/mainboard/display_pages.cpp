@@ -55,6 +55,23 @@ void renderDosingPage(const DisplayModel& m, LcdLine lines[kLcdRows]) {
   appendFlash(lines[3], sizeof(LcdLine), CLARA_F("mg/L"));
 }
 
+/**
+ * Second line of the status page when no phase is counting down, chosen from
+ * the level sensors in this order:
+ *   L3 = 0          -> "NaClO tank Empty"   (dosing tank needs NaClO)
+ *   L2 = 1          -> "Enough NaClO"       (storage tank full)
+ *   L3 = 1, L2 = 0  -> "Waiting for brine"  (ready for the next batch)
+ */
+void appendLevelMessage(const DisplayModel& m, LcdLine line) {
+  if (!m.level3) {
+    appendFlash(line, sizeof(LcdLine), CLARA_F("NaClO tank Empty"));
+  } else if (m.level2) {
+    appendFlash(line, sizeof(LcdLine), CLARA_F("Enough NaClO"));
+  } else {
+    appendFlash(line, sizeof(LcdLine), CLARA_F("Waiting for brine"));
+  }
+}
+
 void renderProcessPage(const DisplayModel& m, LcdLine lines[kLcdRows]) {
   appendFlash(lines[0], sizeof(LcdLine), CLARA_F("State: "));
   appendFlash(lines[0], sizeof(LcdLine), stateName(m.state));
@@ -68,10 +85,8 @@ void renderProcessPage(const DisplayModel& m, LcdLine lines[kLcdRows]) {
       appendFlash(lines[1], sizeof(LcdLine), CLARA_F(" min"));
       break;
     case kStateWaitingForSpace:
-      appendFlash(lines[1], sizeof(LcdLine), CLARA_F("Waiting for space"));
-      break;
     case kStateStandby:
-      appendFlash(lines[1], sizeof(LcdLine), CLARA_F("Waiting for brine"));
+      appendLevelMessage(m, lines[1]);
       break;
   }
 
