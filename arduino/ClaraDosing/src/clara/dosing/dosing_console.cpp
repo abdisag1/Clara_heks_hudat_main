@@ -57,6 +57,13 @@ void DosingConsole::execute(char* line) {
   const uint8_t count = splitTokens(line, tokens, kMaxTokens);
   if (count == 0) return;
 
+  // "set flow_meter 2" behaves like "meter 2": it loads the matching calibration.
+  if (count == 3 && is(tokens[0], CLARA_F("set")) && app_.params().find(tokens[1]) == kFlowMeterSize) {
+    tokens[1] = tokens[2];
+    handleMeter(tokens, 2);
+    return;
+  }
+
   bool changed = false;
   if (paramConsole_.handle(tokens, count, changed)) {
     if (changed) app_.saveAndApplyParams();
@@ -78,6 +85,8 @@ void DosingConsole::execute(char* line) {
     handlePumpCal(tokens, count);
   } else if (is(tokens[0], CLARA_F("flowcal"))) {
     handleFlowCal(tokens, count);
+  } else if (is(tokens[0], CLARA_F("meter"))) {
+    handleMeter(tokens, count);
   } else if (is(tokens[0], CLARA_F("flowsim"))) {
     handleFlowSim(tokens, count);
   } else if (is(tokens[0], CLARA_F("stop"))) {
@@ -98,6 +107,8 @@ void DosingConsole::printHelp() {
   out_.printLineFlash(CLARA_F("  dose <mL>             pump a fixed volume (test)"));
   out_.printLineFlash(CLARA_F("  pumpcal <revs>        run pump N revolutions, then"));
   out_.printLineFlash(CLARA_F("  pumpcal done <mL>     enter measured volume -> ml_per_rev"));
+  out_.printLineFlash(CLARA_F("  meter                 show the flowmeter type"));
+  out_.printLineFlash(CLARA_F("  meter 2|3 [k]         select 2in YF-DN50 or 3in YF-DN80"));
   out_.printLineFlash(CLARA_F("  flowcal start         count flowmeter pulses, then"));
   out_.printLineFlash(CLARA_F("  flowcal done <L>      enter collected volume -> flow_k"));
   out_.printLineFlash(CLARA_F("  flowcal cancel"));
@@ -118,6 +129,7 @@ void DosingConsole::printStatus() {
   out_.printFloat(s.frequencyHz, 3);
   out_.printFlash(s.flowSimulated ? CLARA_F(" Hz, SIMULATED)") : CLARA_F(" Hz)"));
   out_.newline();
+  printMeter();
   out_.printFlash(CLARA_F("water total: "));
   out_.printFloat(s.totalWaterLiters, 1);
   out_.printFlash(CLARA_F(" L   NaClO total: "));
@@ -211,6 +223,66 @@ void DosingConsole::handleFlowCal(char** tokens, uint8_t count) {
     return;
   }
   out_.printLineFlash(CLARA_F("usage: flowcal start | flowcal done <L> | flowcal cancel"));
+}
+
+void DosingConsole::printMeter() {
+  const ParamStore& params = app_.params();
+  const uint8_t size = static_cast<uint8_t>(params.get(kFlowMeterSize));
+  const FlowMeterPreset* preset = findFlowMeterPreset(size);
+  const float kFactor = params.get(kFlowKFactor);
+  out_.printFlash(CLARA_F("flow meter: "));
+  if (preset != 0) {
+    out_.printUInt(size);
+    out_.printFlash(CLARA_F(" inch "));
+    out_.printFlash(preset->model);
+  } else {
+    out_.printFlash(CLARA_F("other"));
+  }
+  out_.printFlash(CLARA_F(", k = "));
+  out_.printFloat(kFactor, 4);
+  out_.printFlash(CLARA_F(" Hz/(L/min) = "));
+  out_.printFloat(kFactor * 60.0f, 1);
+  out_.printLineFlash(CLARA_F(" pulses/L"));
+  if (params.get(kFlowCorrGain) != 1.0f || params.get(kFlowCorrOffset) != 0.0f) {
+    out_.printLineFlash(CLARA_F("  linear correction active (flow_corr_gain / flow_corr_offset)"));
+  }
+  const float flow = app_.status().flowLpm;
+  if (preset != 0 && flow > 0.0f && (flow < preset->minFlowLpm || flow > preset->maxFlowLpm)) {
+    out_.printFlash(CLARA_F("  warning: flow outside the meter range "));
+    out_.printFloat(preset->minFlowLpm, 0);
+    out_.write("-");
+    out_.printFloat(preset->maxFlowLpm, 0);
+    out_.printLineFlash(CLARA_F(" L/min, reading less accurate"));
+  }
+}
+
+void DosingConsole::handleMeter(char** tokens, uint8_t count) {
+  if (count == 1) {
+    printMeter();
+    return;
+  }
+  if (count == 2 && (is(tokens[1], CLARA_F("0")) || is(tokens[1], CLARA_F("other")))) {
+    app_.params().set(kFlowMeterSize, 0.0f);  // label only: keep the current calibration
+    app_.saveAndApplyParams();
+    out_.printFlash(CLARA_F("ok (saved): "));
+    printMeter();
+    return;
+  }
+  uint8_t size = 0;
+  if (is(tokens[1], CLARA_F("2")) || is(tokens[1], CLARA_F("2in")) || is(tokens[1], CLARA_F("dn50"))) size = 2;
+  if (is(tokens[1], CLARA_F("3")) || is(tokens[1], CLARA_F("3in")) || is(tokens[1], CLARA_F("dn80"))) size = 3;
+  float kOverride = 0.0f;
+  if (size == 0 || count > 3 || (count == 3 && !parseFloat(tokens[2], kOverride))) {
+    out_.printLineFlash(CLARA_F("usage: meter 2 | meter 3 | meter 3 <k> | meter 0   (e.g. meter 3 0.05)"));
+    return;
+  }
+  if (!app_.selectFlowMeter(size, kOverride)) {
+    out_.printLineFlash(CLARA_F("error: k-factor out of range"));
+    return;
+  }
+  out_.printFlash(CLARA_F("ok (saved): "));
+  printMeter();
+  out_.printLineFlash(CLARA_F("verify with a bucket test: flowcal start ... flowcal done <L>"));
 }
 
 void DosingConsole::handleFlowSim(char** tokens, uint8_t count) {

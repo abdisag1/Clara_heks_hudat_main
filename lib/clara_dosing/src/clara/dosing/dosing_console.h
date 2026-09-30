@@ -23,6 +23,7 @@ namespace dosing {
  *   dose <mL>                  pump a fixed volume at test speed
  *   pumpcal <revs>             run the pump N revolutions ...
  *   pumpcal done <mL>          ... then enter the measured volume
+ *   meter [2|3 [k]]            show / select the flowmeter (2" YF-DN50, 3" YF-DN80)
  *   flowcal start              start counting flowmeter pulses ...
  *   flowcal done <litres>      ... then enter the collected volume
  *   flowcal cancel
@@ -50,6 +51,8 @@ class DosingConsole {
   void handlePumpCal(char** tokens, uint8_t count);
   void handleFlowCal(char** tokens, uint8_t count);
   void handleFlowSim(char** tokens, uint8_t count);
+  void handleMeter(char** tokens, uint8_t count);
+  void printMeter();
 
   DosingApp& app_;
   TextOutput& out_;

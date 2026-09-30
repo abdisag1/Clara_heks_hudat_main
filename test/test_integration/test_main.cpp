@@ -260,6 +260,64 @@ void test_flow_calibration_procedure() {
   TEST_ASSERT_FLOAT_WITHIN(0.05f, 60.0f, bench.app.status().flowLpm);
 }
 
+void test_flow_meter_selection() {
+  fakes::FakeClock clock;
+  fakes::FakeEeprom eeprom;
+  {
+    DosingBench bench(clock, eeprom);
+    bench.app.begin();
+
+    // 2 inch YF-DN50: f = 0.2 Q -> 20 Hz is 100 L/min (no correction curve).
+    bench.type("meter 2");
+    TEST_ASSERT_TRUE(bench.console.contains("2 inch YF-DN50"));
+    TEST_ASSERT_TRUE(bench.console.contains("12.0 pulses/L"));
+    bench.flow.setFrequency(20.0);
+    bench.run(5 * kSecond);
+    TEST_ASSERT_FLOAT_WITHIN(0.05f, 100.0f, bench.app.status().flowLpm);
+
+    // 3 inch YF-DN80: f = 0.5 Q -> 50 Hz is 100 L/min.
+    bench.type("set flow_meter 3");  // same as "meter 3"
+    bench.flow.setFrequency(50.0);
+    bench.run(5 * kSecond);
+    TEST_ASSERT_FLOAT_WITHIN(0.05f, 100.0f, bench.app.status().flowLpm);
+
+    // A 3 inch meter labelled f = 0.05 Q: 5 Hz is 100 L/min.
+    bench.type("meter 3 0.05");
+    TEST_ASSERT_TRUE(bench.console.contains("3.0 pulses/L"));
+    bench.flow.setFrequency(5.0);
+    bench.run(5 * kSecond);
+    TEST_ASSERT_FLOAT_WITHIN(0.05f, 100.0f, bench.app.status().flowLpm);
+
+    bench.console.clear();
+    bench.type("meter 7");
+    TEST_ASSERT_TRUE(bench.console.contains("usage"));
+  }
+  // The selection survives a reboot.
+  DosingBench rebooted(clock, eeprom);
+  rebooted.app.begin();
+  TEST_ASSERT_EQUAL_FLOAT(3.0f, rebooted.app.params().get(dosing::kFlowMeterSize));
+  TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.05f, rebooted.app.params().get(dosing::kFlowKFactor));
+  rebooted.type("status");
+  TEST_ASSERT_TRUE(rebooted.console.contains("flow meter: 3 inch YF-DN80"));
+}
+
+void test_dosing_keeps_calibration_saved_by_previous_firmware() {
+  // EEPROM written by the previous release (14 parameters, no flow_meter).
+  fakes::FakeEeprom eeprom;
+  {
+    float values[14];
+    ParamStore previous(dosing::parameterTable(), 14, values);
+    previous.set(dosing::kPumpMlPerRev, 1.3f);
+    ParamPersistence(eeprom, dosing::kEepromParamsAddress).save(previous);
+  }
+  fakes::FakeClock clock;
+  DosingBench bench(clock, eeprom);
+  bench.app.begin();
+  TEST_ASSERT_EQUAL(ParamPersistence::kLoadOk, bench.app.status().calibrationLoad);
+  TEST_ASSERT_FLOAT_WITHIN(1e-6f, 1.3f, bench.app.params().get(dosing::kPumpMlPerRev));
+  TEST_ASSERT_EQUAL_FLOAT(3.0f, bench.app.params().get(dosing::kFlowMeterSize));
+}
+
 void test_manual_dose_is_exact_and_not_counted_as_dosing() {
   fakes::FakeClock clock;
   fakes::FakeEeprom eeprom;
@@ -647,6 +705,8 @@ int main() {
   RUN_TEST(test_pump_calibration_procedure);
   RUN_TEST(test_pumpcal_done_without_run_is_rejected);
   RUN_TEST(test_flow_calibration_procedure);
+  RUN_TEST(test_flow_meter_selection);
+  RUN_TEST(test_dosing_keeps_calibration_saved_by_previous_firmware);
   RUN_TEST(test_manual_dose_is_exact_and_not_counted_as_dosing);
   RUN_TEST(test_stop_command_aborts_pump);
   RUN_TEST(test_flow_simulation_drives_dosing_without_water);

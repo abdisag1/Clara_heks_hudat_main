@@ -78,6 +78,19 @@ void test_flow_is_never_negative() {
   TEST_ASSERT_EQUAL_FLOAT(0.0f, frequencyToFlowLpm(c, -1.0f));
 }
 
+void test_flow_meter_presets_match_datasheets() {
+  const FlowMeterPreset* dn50 = findFlowMeterPreset(2);
+  const FlowMeterPreset* dn80 = findFlowMeterPreset(3);
+  TEST_ASSERT_NOT_NULL(dn50);
+  TEST_ASSERT_NOT_NULL(dn80);
+  TEST_ASSERT_EQUAL_FLOAT(0.2f, dn50->kFactorHzPerLpm);          // f = 0.2 Q
+  TEST_ASSERT_FLOAT_WITHIN(1e-4f, 12.0f, dn50->kFactorHzPerLpm * 60.0f);  // 12 pulses/L
+  TEST_ASSERT_EQUAL_FLOAT(0.5f, dn80->kFactorHzPerLpm);          // f = 0.5 Q
+  TEST_ASSERT_FLOAT_WITHIN(1e-4f, 30.0f, dn80->kFactorHzPerLpm * 60.0f);  // 30 pulses/L
+  TEST_ASSERT_NULL(findFlowMeterPreset(0));
+  TEST_ASSERT_NULL(findFlowMeterPreset(4));
+}
+
 void test_k_factor_from_bucket_test() {
   // 3000 pulses for 100 L = 30 pulses/L = 0.5 Hz per L/min
   TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.5f, kFactorFromBucketTest(3000, 100.0f));
@@ -252,6 +265,7 @@ int main() {
   RUN_TEST(test_flow_below_threshold_is_uncorrected);
   RUN_TEST(test_flow_above_threshold_uses_linear_correction);
   RUN_TEST(test_flow_is_never_negative);
+  RUN_TEST(test_flow_meter_presets_match_datasheets);
   RUN_TEST(test_k_factor_from_bucket_test);
   RUN_TEST(test_frequency_meter_measures_between_pulse_timestamps);
   RUN_TEST(test_frequency_meter_decays_and_times_out_when_flow_stops);

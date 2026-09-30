@@ -27,6 +27,29 @@ struct FlowCalibration {
   float correctionOffsetLpm;
 };
 
+/**
+ * Datasheet data of the supported flowmeters (hall-effect turbine meters).
+ *
+ * | Size | Model   | Datasheet            | Pulses per litre | Range         |
+ * |------|---------|----------------------|------------------|---------------|
+ * | 2"   | YF-DN50 | f = 0.2 x Q (+-3 %)  | 12               | 10-300 L/min  |
+ * | 3"   | YF-DN80 | f = 0.5 x Q          | 30               | 20-500 L/min  |
+ *
+ * Note: some SEA listings of an aluminium-body DN80 state f = 0.05 x Q (3 pulses
+ * per litre). Check the label of the installed meter, and verify with a bucket
+ * test (flowcal): a factor-of-ten error would dose ten times too much or too little.
+ */
+struct FlowMeterPreset {
+  uint8_t sizeInch;
+  const char* model;  ///< flash string
+  float kFactorHzPerLpm;
+  float minFlowLpm;   ///< Below this the datasheet accuracy is not guaranteed.
+  float maxFlowLpm;
+};
+
+/** @return the preset for a 2" or 3" meter, or 0 for any other size. */
+const FlowMeterPreset* findFlowMeterPreset(uint8_t sizeInch);
+
 /** Applies @p calibration to a pulse frequency. Never returns a negative flow. */
 float frequencyToFlowLpm(const FlowCalibration& calibration, float frequencyHz);
 

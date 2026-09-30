@@ -29,6 +29,7 @@ enum Param {
   kCoefBandLpm,         ///< Flow separating the two dose multipliers, L/min.
   kPumpMaxStepRate,     ///< Fastest step rate the pump may be driven at, steps/s.
   kPumpTestStepRate,    ///< Step rate used for manual dose and pump calibration, steps/s.
+  kFlowMeterSize,       ///< Installed flowmeter: 2 = 2" YF-DN50, 3 = 3" YF-DN80, 0 = other.
   kParamCount
 };
 

@@ -191,6 +191,21 @@ void DosingApp::setFlowSimulation(bool enabled, float flowLpm) {
   status_.simulatedFlowLpm = enabled && flowLpm > 0.0f ? flowLpm : 0.0f;
 }
 
+bool DosingApp::selectFlowMeter(uint8_t sizeInch, float kFactorOverride) {
+  const FlowMeterPreset* preset = findFlowMeterPreset(sizeInch);
+  if (preset == 0) return false;
+  const float kFactor = kFactorOverride > 0.0f ? kFactorOverride : preset->kFactorHzPerLpm;
+  if (!params_.isValid(kFlowKFactor, kFactor)) return false;
+  params_.set(kFlowMeterSize, sizeInch);
+  params_.set(kFlowKFactor, kFactor);
+  // The datasheet relation is linear: no correction curve.
+  params_.set(kFlowCorrGain, 1.0f);
+  params_.set(kFlowCorrOffset, 0.0f);
+  saveAndApplyParams();
+  frequencyMeter_.reset(flowSensor_.snapshot());
+  return true;
+}
+
 void DosingApp::startFlowCalibration() {
   flowCalibrationStartCount_ = flowSensor_.snapshot().count;
   status_.flowCalibrationPulses = 0;

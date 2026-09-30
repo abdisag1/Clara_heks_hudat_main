@@ -55,6 +55,30 @@ c = 1.35, N = 15 mL, S = 80 000 steps, spread over the next ~19 s.
 | 11 | `coef_band` | 60 | L/min | flow separating the multipliers |
 | 12 | `max_step_rate` | 10000 | steps/s | pump speed limit |
 | 13 | `test_step_rate` | 3200 | steps/s | pump speed for `dose` and `pumpcal` |
+| 14 | `flow_meter` | 3 | inch | installed meter: 2 = YF-DN50, 3 = YF-DN80, 0 = other (set with `meter`) |
+
+### 0. Select the flowmeter
+
+| Meter | Command | Datasheet | Pulses per litre | Range |
+|---|---|---|---|---|
+| 2" YF-DN50 | `meter 2` | f = 0.2 × Q (±3 %) | 12 | 10–300 L/min |
+| 3" YF-DN80 | `meter 3` | f = 0.5 × Q | 30 | 20–500 L/min |
+| 3" meter labelled f = 0.05 × Q | `meter 3 0.05` | f = 0.05 × Q | 3 | 20–500 L/min |
+
+`meter` sets `flow_k` from the datasheet, switches the linear correction off (gain 1,
+offset 0) and saves. `meter` without an argument shows the current setting, and
+`status` warns when the flow is outside the meter's range. `set flow_meter 2` does
+the same as `meter 2`.
+
+**Check the label on the installed meter.** Some SEA listings of the aluminium 3"
+DN80 give f = 0.05 × Q, while the YF-DN80 datasheet gives f = 0.5 × Q. A wrong
+k-factor doses ten times too much or too little. Confirm with the bucket test
+(section 2): 100 L should give about 1200 pulses (2" DN50), 3000 pulses (3" DN80,
+0.5 × Q) or 300 pulses (0.05 × Q).
+
+Factory default (unchanged from v2.2): 3" with k = 0.5 and the v2.2 field
+correction Q = 1.02 × Q + 8.61 above 5 L/min. Selecting a meter with `meter`
+replaces that correction with the linear datasheet relation.
 
 ### 1. Pump calibration (do this first, and after changing tubing)
 

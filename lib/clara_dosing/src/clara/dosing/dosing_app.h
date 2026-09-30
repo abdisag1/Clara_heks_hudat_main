@@ -92,6 +92,14 @@ class DosingApp {
    * the linear correction to identity (a one-point calibration replaces it).
    */
   bool finishFlowCalibration(float liters, float& kFactor, uint32_t& pulses);
+  /**
+   * Selects the installed flowmeter (2 or 3 inch) and loads its datasheet
+   * calibration: flow_k from the datasheet (or @p kFactorOverride if > 0) and
+   * no linear correction. Saved to EEPROM.
+   * @return false for an unknown size or an out-of-range k-factor.
+   */
+  bool selectFlowMeter(uint8_t sizeInch, float kFactorOverride = 0.0f);
+
   /** Abandons a bucket test without changing the calibration. */
   void cancelFlowCalibration() { status_.flowCalibrationActive = false; }
 

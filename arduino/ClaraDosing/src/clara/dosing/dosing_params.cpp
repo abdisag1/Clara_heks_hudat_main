@@ -23,6 +23,7 @@ const char kNameCoefHigh[] CLARA_PROGMEM = "coef_high";
 const char kNameCoefBand[] CLARA_PROGMEM = "coef_band";
 const char kNameMaxRate[] CLARA_PROGMEM = "max_step_rate";
 const char kNameTestRate[] CLARA_PROGMEM = "test_step_rate";
+const char kNameMeter[] CLARA_PROGMEM = "flow_meter";
 
 const char kUnitMgL[] CLARA_PROGMEM = "mg/L";
 const char kUnitGL[] CLARA_PROGMEM = "g/L";
@@ -48,6 +49,8 @@ const char kHelpCoefHigh[] CLARA_PROGMEM = "dose multiplier, flow > coef_band";
 const char kHelpCoefBand[] CLARA_PROGMEM = "flow separating the multipliers";
 const char kHelpMaxRate[] CLARA_PROGMEM = "pump speed limit";
 const char kHelpTestRate[] CLARA_PROGMEM = "pump speed for dose/pumpcal";
+const char kHelpMeter[] CLARA_PROGMEM = "2 = 2in DN50, 3 = 3in DN80, 0 = other";
+const char kUnitInch[] CLARA_PROGMEM = "inch";
 
 // Defaults reproduce the behaviour of the v2.2 field firmware.
 const ParamInfo kTable[kParamCount] CLARA_PROGMEM = {
@@ -66,6 +69,7 @@ const ParamInfo kTable[kParamCount] CLARA_PROGMEM = {
     {kNameCoefBand,       kUnitLpm,      kHelpCoefBand,      0.0f,   5000.0f,  60.0f,   1},
     {kNameMaxRate,        kUnitStepRate, kHelpMaxRate,       100.0f, 15000.0f, 10000.0f, 0},
     {kNameTestRate,       kUnitStepRate, kHelpTestRate,      100.0f, 15000.0f, 3200.0f, 0},
+    {kNameMeter,          kUnitInch,     kHelpMeter,         0.0f,   3.0f,     3.0f,    0},
 };
 
 }  // namespace
