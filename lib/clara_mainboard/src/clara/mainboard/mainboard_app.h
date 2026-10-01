@@ -67,6 +67,12 @@ class MainboardApp {
   void update();
 
   ParamStore& params() { return params_; }
+
+  /** Baud rate the serial port (Ecophi report + console) must run at. */
+  uint32_t serialBaudRate() const {
+    const float baud = params_.get(kReportBaud);
+    return isStandardBaudRate(baud) ? static_cast<uint32_t>(baud) : kDefaultBaudRate;
+  }
   void saveAndApplyParams();
 
   /** Bench test: jump to a process state. */

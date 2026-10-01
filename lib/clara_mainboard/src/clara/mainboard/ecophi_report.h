@@ -1,6 +1,7 @@
 /**
  * @file ecophi_report.h
- * @brief Report frames for the Ecophi remote-monitoring unit (RS485, 9600 baud).
+ * @brief Report frames for the Ecophi remote-monitoring unit (RS485, baud rate =
+ *        parameter report_baud, default 115200).
  *
  * The frame format is unchanged from v2.2 so the existing Ecophi device and
  * server keep working:

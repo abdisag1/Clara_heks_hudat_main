@@ -4,7 +4,8 @@
  *
  * Produces NaClO by electrolysis in batches, reads the level and voltage
  * sensors, shows the status on a 20x4 LCD, polls the dosing board over I2C and
- * reports to the Ecophi remote-monitoring unit over RS485 (Serial, 9600 baud).
+ * reports to the Ecophi remote-monitoring unit over RS485 (Serial, baud rate =
+ * parameter report_baud, default 115200).
  * The same serial port offers a calibration console (type "help").
  *
  * All logic lives in lib/clara_mainboard (unit tested on the PC); this file
@@ -41,6 +42,20 @@ clara::PrintOutput gSerialOutput(Serial);  // RS485 to Ecophi + USB console
 clara::mainboard::MainboardApp gApp(gClock, gIo, gDosingLink, gDisplay, gSerialOutput, gEeprom);
 clara::mainboard::MainboardConsole gConsole(gApp, gSerialOutput);
 
+uint32_t gSerialBaud = 0;
+
+/** (Re)starts the serial port when report_baud changed (console "set report_baud"). */
+void applySerialBaudRate() {
+  const uint32_t baud = gApp.serialBaudRate();
+  if (baud == gSerialBaud) return;
+  if (gSerialBaud != 0) {
+    Serial.flush();  // let the "switching" reply leave at the old rate
+    Serial.end();
+  }
+  Serial.begin(baud);
+  gSerialBaud = baud;
+}
+
 }  // namespace
 
 void setup() {
@@ -49,7 +64,6 @@ void setup() {
 #endif
   gIo.begin();  // outputs off first
 
-  Serial.begin(9600);
   pinMode(pins::kRs485Direction, OUTPUT);
   digitalWrite(pins::kRs485Direction, HIGH);  // transmit only, as in v2.2
 
@@ -60,7 +74,8 @@ void setup() {
 #endif
   gDisplay.begin();
 
-  gApp.begin();
+  gApp.begin();           // loads the calibration, including report_baud
+  applySerialBaudRate();  // the app has not printed anything before this point
   gConsole.printBanner();
 
 #if defined(CLARA_ENABLE_WATCHDOG)
@@ -75,5 +90,6 @@ void loop() {
   wdt_reset();
 #endif
   while (Serial.available() > 0) gConsole.onChar(static_cast<char>(Serial.read()));
+  applySerialBaudRate();
   gApp.update();
 }

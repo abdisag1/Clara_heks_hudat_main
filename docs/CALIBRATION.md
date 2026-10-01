@@ -2,8 +2,9 @@
 
 Every tunable value is a **parameter**: it has a name, a unit, an allowed range and a
 factory default, and it is stored in EEPROM with a checksum. You change parameters from
-a serial terminal (Arduino Serial Monitor, `pio device monitor`, PuTTY, ...) at
-**9600 baud, line ending "Newline"**.
+a serial terminal (Arduino Serial Monitor, `pio device monitor`, PuTTY, ...) with line
+ending **"Newline"**, at **115200 baud for the main board** (setting `report_baud`)
+and **9600 baud for the dosing board**.
 
 | Command | Effect |
 |---|---|
@@ -150,6 +151,13 @@ output also goes out on RS485; the Ecophi parser ignores it (it never starts wit
 | 6 | `voltage_ref` | 4.85 | V | ADC reference: measure the Mega's 5 V pin |
 | 7 | `voltage_divider` | 22.2 | - | voltage sensor divider ratio |
 | 8 | `resume_batch` | 1 | - | 1: continue an interrupted batch after a power cut; 0: always start in standby |
+| 9 | `report_baud` | 115200 | baud | serial speed of the Ecophi report **and** the main-board console: 9600, 19200, 38400, 57600 or 115200 |
+
+**Baud rate:** the Ecophi RS485 link and the USB console share the Mega's serial
+port, so `set report_baud 9600` switches both at once. Change the Serial Monitor to the
+new rate right after the command. The setting is saved; `defaults` returns to 115200.
+If you forget the rate, try each standard rate in the Serial Monitor: the start-up
+banner shows the current one (`Clara main board v3.0 - type help - 115200 baud`).
 
 **Voltage calibration:** measure the battery with a multimeter, compare with `status`, and
 scale `voltage_divider` by (multimeter / displayed).

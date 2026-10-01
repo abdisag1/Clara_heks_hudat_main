@@ -96,7 +96,8 @@ Install [PlatformIO](https://platformio.org/install) (for example the VS Code ex
 ```sh
 pio run -e dosing -t upload      # Arduino Uno   (dosing board)
 pio run -e mainboard -t upload   # Arduino Mega  (main board)
-pio device monitor               # console, 9600 baud
+pio device monitor -e mainboard  # main board console, 115200 baud (report_baud)
+pio device monitor -e dosing     # dosing board console, 9600 baud
 ```
 
 ### Arduino IDE
@@ -157,7 +158,7 @@ pio test -e native
 * **Main ↔ dosing board (I2C, address 0x21):** the main board requests a 28-byte
   telemetry frame every second (versioned, CRC-8). See
   [`lib/clara_common/src/clara/dosing_link.h`](lib/clara_common/src/clara/dosing_link.h).
-* **Main board → Ecophi (RS485, 9600 baud):**
+* **Main board → Ecophi (RS485, `report_baud`, default 115200 baud):**
   `;flow,voltage,L1,L2,L3,naclo,frc,active_cl,ph:`, unchanged from v2.2. See
   [`lib/clara_mainboard/src/clara/mainboard/ecophi_report.h`](lib/clara_mainboard/src/clara/mainboard/ecophi_report.h).
 * **Level sensor 3 (NaClO tank):** main board pin 9 → dosing board A3, HIGH = NaClO available.

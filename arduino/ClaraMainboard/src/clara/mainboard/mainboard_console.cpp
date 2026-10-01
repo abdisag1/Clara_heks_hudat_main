@@ -19,7 +19,9 @@ MainboardConsole::MainboardConsole(MainboardApp& app, TextOutput& out)
 
 void MainboardConsole::printBanner() {
   // No ';' in console output: the Ecophi receiver on the shared line ignores it.
-  out_.printLineFlash(CLARA_F("Clara main board v3.0 - type help"));
+  out_.printFlash(CLARA_F("Clara main board v3.0 - type help - "));
+  out_.printUInt(app_.serialBaudRate());
+  out_.printLineFlash(CLARA_F(" baud"));
   const MainboardStatus& status = app_.status();
   if (status.legacyImported) out_.printLineFlash(CLARA_F("imported settling and transfer time from v2.2"));
   if (status.calibrationLoad != ParamPersistence::kLoadOk) {
@@ -40,6 +42,20 @@ void MainboardConsole::execute(char* line) {
   char* tokens[kMaxTokens];
   const uint8_t count = splitTokens(line, tokens, kMaxTokens);
   if (count == 0) return;
+
+  // report_baud only accepts the standard rates.
+  if (count == 3 && is(tokens[0], CLARA_F("set")) && app_.params().find(tokens[1]) == kReportBaud) {
+    float baud = 0.0f;
+    if (!parseFloat(tokens[2], baud) || !isStandardBaudRate(baud)) {
+      out_.printLineFlash(CLARA_F("error: use 9600, 19200, 38400, 57600 or 115200"));
+      return;
+    }
+    if (baud != app_.params().get(kReportBaud)) {
+      out_.printFlash(CLARA_F("ok - switching to "));
+      out_.printUInt(static_cast<uint32_t>(baud));
+      out_.printLineFlash(CLARA_F(" baud now, change the Serial Monitor and the Ecophi unit too"));
+    }
+  }
 
   bool changed = false;
   if (paramConsole_.handle(tokens, count, changed)) {

@@ -6,6 +6,8 @@
 #ifndef CLARA_MAIN_PARAMS_H
 #define CLARA_MAIN_PARAMS_H
 
+#include <stdint.h>
+
 #include "../param_store.h"
 
 namespace clara {
@@ -22,10 +24,18 @@ enum Param {
   kVoltageRef,         ///< ADC reference voltage as measured on the board, V.
   kVoltageDivider,     ///< Voltage sensor divider ratio (battery V per ADC V).
   kResumeBatch,        ///< 1: continue an interrupted batch after a power cut, 0: start in standby.
+  kReportBaud,         ///< Baud rate of the serial port (Ecophi report + console).
   kParamCount
 };
 
 const ParamInfo* parameterTable();
+
+/** Baud rates accepted for report_baud. */
+const uint32_t kStandardBaudRates[] = {9600, 19200, 38400, 57600, 115200};
+const uint32_t kDefaultBaudRate = 115200;
+
+/** True if @p baud is one of kStandardBaudRates. */
+bool isStandardBaudRate(float baud);
 
 }  // namespace mainboard
 }  // namespace clara

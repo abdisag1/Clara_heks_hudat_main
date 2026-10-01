@@ -77,7 +77,7 @@ flow 90.0 Hz (192.21 L/min), 59.5 s simulated: 299850 steps, expected 299848 (+0
 ## 3. Bench test checklist (real hardware)
 
 Connect both boards as in the device (I2C, pin 9 → A3, common ground). Open two serial
-monitors at 9600 baud: dosing board USB, main board USB.
+monitors: dosing board USB at 9600 baud, main board USB at 115200 baud (`report_baud`).
 
 ### Dosing board
 

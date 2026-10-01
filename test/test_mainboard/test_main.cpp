@@ -372,6 +372,14 @@ void test_display_lines_never_exceed_20_columns() {
 
 // --- Voltage ----------------------------------------------------------------------
 
+void test_standard_baud_rates() {
+  TEST_ASSERT_TRUE(isStandardBaudRate(9600.0f));
+  TEST_ASSERT_TRUE(isStandardBaudRate(115200.0f));
+  TEST_ASSERT_FALSE(isStandardBaudRate(14400.0f));
+  TEST_ASSERT_FALSE(isStandardBaudRate(0.0f));
+  TEST_ASSERT_EQUAL_UINT32(115200, kDefaultBaudRate);
+}
+
 void test_voltage_conversion_matches_v22() {
   // v2.2: value * 4.85 / 1024 * 22.2
   TEST_ASSERT_FLOAT_WITHIN(1e-3f, 128.0f * 4.85f / 1024.0f * 22.2f, adcToVolts(128.0f, 4.85f, 22.2f));
@@ -399,6 +407,7 @@ int main() {
   RUN_TEST(test_display_level_messages_when_idle);
   RUN_TEST(test_display_alarms_and_splash);
   RUN_TEST(test_display_lines_never_exceed_20_columns);
+  RUN_TEST(test_standard_baud_rates);
   RUN_TEST(test_voltage_conversion_matches_v22);
   return UNITY_END();
 }

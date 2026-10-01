@@ -530,6 +530,35 @@ void test_mainboard_keeps_settings_saved_by_previous_firmware() {
   TEST_ASSERT_EQUAL(ParamPersistence::kLoadOk, bench.app.status().calibrationLoad);
   TEST_ASSERT_EQUAL_FLOAT(150.0f, bench.app.params().get(mainboard::kProductionMin));
   TEST_ASSERT_EQUAL_FLOAT(1.0f, bench.app.params().get(mainboard::kResumeBatch));
+  TEST_ASSERT_EQUAL_UINT32(115200, bench.app.serialBaudRate());
+}
+
+void test_mainboard_report_baud_rate() {
+  fakes::FakeEeprom eeprom;
+  {
+    fakes::FakeClock clock;
+    DeadLink link;
+    MainBench bench(clock, link, eeprom);
+    bench.app.begin();
+    TEST_ASSERT_EQUAL_UINT32(115200, bench.app.serialBaudRate());  // default
+    bench.shell.printBanner();
+    TEST_ASSERT_TRUE(bench.serial.contains("115200 baud"));
+
+    bench.type("set report_baud 12345");  // not a standard rate
+    TEST_ASSERT_TRUE(bench.serial.contains("error: use 9600, 19200, 38400, 57600 or 115200"));
+    TEST_ASSERT_EQUAL_UINT32(115200, bench.app.serialBaudRate());
+
+    bench.type("set report_baud 9600");
+    TEST_ASSERT_TRUE(bench.serial.contains("switching to 9600 baud"));
+    TEST_ASSERT_EQUAL_UINT32(9600, bench.app.serialBaudRate());
+  }
+  fakes::FakeClock clock;  // saved across a reboot
+  DeadLink link;
+  MainBench rebooted(clock, link, eeprom);
+  rebooted.app.begin();
+  TEST_ASSERT_EQUAL_UINT32(9600, rebooted.app.serialBaudRate());
+  rebooted.type("defaults");
+  TEST_ASSERT_EQUAL_UINT32(115200, rebooted.app.serialBaudRate());
 }
 
 void test_mainboard_imports_v22_settings() {
@@ -742,6 +771,7 @@ int main() {
   RUN_TEST(test_mainboard_cancel_command_prevents_resume);
   RUN_TEST(test_mainboard_resume_can_be_disabled);
   RUN_TEST(test_mainboard_keeps_settings_saved_by_previous_firmware);
+  RUN_TEST(test_mainboard_report_baud_rate);
   RUN_TEST(test_mainboard_imports_v22_settings);
   RUN_TEST(test_mainboard_console_changes_production_time);
   RUN_TEST(test_mainboard_shows_link_loss);

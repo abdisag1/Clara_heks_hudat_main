@@ -9,7 +9,7 @@ socket with crystal Y1 and programming header P14.
 
 ### 1. Ask the firmware what is wrong
 
-On the **main board** Serial Monitor (9600 baud, Newline):
+On the **main board** Serial Monitor (115200 baud or your `report_baud`, Newline):
 
 ```
 status
