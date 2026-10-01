@@ -477,31 +477,60 @@ void test_mainboard_transfer_pump_error() {
   TEST_ASSERT_EQUAL(mainboard::kStateProduction, bench.app.cycle().state());  // L1 still full
 }
 
-void test_mainboard_resumes_batch_after_power_cut() {
-  fakes::FakeClock clock;
+/** Main board produces for @p minutes, power is cut, @return production time left after reboot. */
+uint32_t remainingAfterRealPowerCut(uint32_t minutes) {
   fakes::FakeEeprom eeprom;
   DeadLink link;
+  uint32_t productionStartMs = 0;
   {
+    fakes::FakeClock clock;
     MainBench bench(clock, link, eeprom);
     bench.app.begin();
     bench.io.levels[0] = true;
-    for (uint32_t t = 0; t < 95 * kMinute; t += 100) {
+    while (true) {  // run until "minutes" after electrolysis switched on
       clock.advanceMs(100);
       bench.app.update();
+      if (productionStartMs == 0 && bench.io.outputs.electrolysis) productionStartMs = clock.millis();
+      if (productionStartMs != 0 && clock.millis() - productionStartMs >= minutes * kMinute) break;
     }
     TEST_ASSERT_EQUAL(mainboard::kStateProduction, bench.app.cycle().state());
   }
-  // Power cut; the board restarts 2 s later with a fresh millis().
-  fakes::FakeClock rebootClock;
+  fakes::FakeClock rebootClock;  // power cut: the board restarts with a fresh millis()
   MainBench rebooted(rebootClock, link, eeprom);
   rebooted.app.begin();
   TEST_ASSERT_TRUE(rebooted.app.status().progressRestored);
   TEST_ASSERT_EQUAL(mainboard::kStateProduction, rebooted.app.cycle().state());
   TEST_ASSERT_TRUE(rebooted.io.outputs.electrolysis);
-  // Saved every 10 min: at most 10 min are repeated, never skipped.
-  const uint32_t remaining = rebooted.app.cycle().remainingMs(rebootClock.millis());
-  TEST_ASSERT_GREATER_OR_EQUAL_UINT32(180 * kMinute - 95 * kMinute, remaining);
-  TEST_ASSERT_LESS_OR_EQUAL_UINT32(180 * kMinute - 85 * kMinute, remaining);
+  return rebooted.app.cycle().remainingMs(rebootClock.millis());
+}
+
+void test_mainboard_resumes_batch_after_power_cut() {
+  TEST_ASSERT_EQUAL_UINT32(150 * kMinute, remainingAfterRealPowerCut(45));
+  TEST_ASSERT_EQUAL_UINT32(120 * kMinute, remainingAfterRealPowerCut(65));
+  TEST_ASSERT_EQUAL_UINT32(90 * kMinute, remainingAfterRealPowerCut(95));
+}
+
+void test_mainboard_eeprom_wear_per_batch() {
+  // Ten complete batches: count the physical writes to the busiest EEPROM byte.
+  fakes::FakeClock clock;
+  fakes::FakeEeprom eeprom;
+  DeadLink link;
+  MainBench bench(clock, link, eeprom);
+  bench.app.begin();
+  for (int batch = 0; batch < 10; ++batch) {
+    bench.io.levels[0] = true;
+    bench.io.levels[2] = true;
+    for (uint32_t t = 0; t < 200 * kMinute; t += 1000) {
+      clock.advanceMs(1000);
+      bench.app.update();
+      if (bench.io.outputs.transferValve) bench.io.levels[0] = false;
+    }
+    TEST_ASSERT_EQUAL(mainboard::kStateStandby, bench.app.cycle().state());
+  }
+  TEST_ASSERT_EQUAL_UINT32(10, bench.app.cycle().completedCycles());
+  // 9 saves per batch spread over 8 slots: about 12 writes per byte for 10
+  // batches. 100 000 cycles therefore last > 80 000 batches (~30 years at 7/day).
+  TEST_ASSERT_LESS_OR_EQUAL_UINT32(13, eeprom.maxWrites());
 }
 
 /** Runs the main board until it is @p minutes into production, then "cuts the power". */
@@ -800,6 +829,7 @@ int main() {
   RUN_TEST(test_mainboard_full_production_cycle);
   RUN_TEST(test_mainboard_transfer_pump_error);
   RUN_TEST(test_mainboard_resumes_batch_after_power_cut);
+  RUN_TEST(test_mainboard_eeprom_wear_per_batch);
   RUN_TEST(test_mainboard_cancel_command_prevents_resume);
   RUN_TEST(test_mainboard_resume_can_be_disabled);
   RUN_TEST(test_mainboard_keeps_settings_saved_by_previous_firmware);

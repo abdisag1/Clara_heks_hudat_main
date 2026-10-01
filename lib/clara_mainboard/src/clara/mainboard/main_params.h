@@ -24,6 +24,7 @@ enum Param {
   kVoltageDivider,     ///< Voltage sensor divider ratio (battery V per ADC V).
   kResumeBatch,        ///< 1: continue an interrupted batch after a power cut, 0: start in standby.
   kReportBaud,         ///< Baud rate of the serial port (Ecophi report + console).
+  kCheckpointMin,      ///< Production progress is saved every N minutes (resume point after a power cut).
   kParamCount
 };
 

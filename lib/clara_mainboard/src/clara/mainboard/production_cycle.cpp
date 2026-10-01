@@ -30,8 +30,9 @@ ProductionCycle::ProductionCycle()
       polarityReversed_(false),
       completedCycles_(0),
       persistPending_(false),
-      lastPersistMs_(0) {
+      savedCheckpoint_(0) {
   times_.polarityCycles = 1;
+  times_.checkpointMs = kDefaultCheckpointMs;
 }
 
 void ProductionCycle::begin(uint32_t nowMs) {
@@ -83,6 +84,8 @@ void ProductionCycle::enter(ProcessState state, uint32_t startMs, uint32_t resto
   stateStartMs_ = startMs;
   restoredMs_ = restoredMs;
   persistPending_ = true;
+  // A resumed phase has already saved the checkpoints it restarted from.
+  savedCheckpoint_ = times_.checkpointMs > 0 ? restoredMs / times_.checkpointMs : 0;
 }
 
 void ProductionCycle::update(uint32_t nowMs, const CycleInputs& inputs) {
@@ -166,17 +169,25 @@ CycleProgress ProductionCycle::progress(uint32_t nowMs) const {
   CycleProgress progress;
   progress.state = static_cast<uint8_t>(state_);
   progress.polarityReversed = polarityReversed_ ? 1 : 0;
-  const uint32_t minutes = elapsedMs(nowMs) / 60000ul;
+  uint32_t elapsed = elapsedMs(nowMs);
+  if (times_.checkpointMs > 0) elapsed = elapsed / times_.checkpointMs * times_.checkpointMs;
+  const uint32_t minutes = elapsed / 60000ul;
   progress.elapsedMinutes = static_cast<uint16_t>(minutes > 0xFFFFu ? 0xFFFFu : minutes);
   progress.completedCycles = completedCycles_;
   return progress;
 }
 
 bool ProductionCycle::takePersistRequest(uint32_t nowMs) {
-  const bool periodicDue = durationOf(state_) > 0 && nowMs - lastPersistMs_ >= kProgressSavePeriodMs;
-  if (!persistPending_ && !periodicDue) return false;
+  // Checkpoints reached so far in the running phase (only timed phases, and
+  // not after the phase is over: that save happens with the state change).
+  uint32_t reached = savedCheckpoint_;
+  if (times_.checkpointMs > 0 && durationOf(state_) > 0 && remainingMs(nowMs) > 0) {
+    reached = elapsedMs(nowMs) / times_.checkpointMs;
+  }
+  const bool checkpointDue = reached > savedCheckpoint_;
+  if (!persistPending_ && !checkpointDue) return false;
   persistPending_ = false;
-  lastPersistMs_ = nowMs;
+  if (checkpointDue) savedCheckpoint_ = reached;
   return true;
 }
 

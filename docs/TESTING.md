@@ -102,7 +102,7 @@ monitors: dosing board USB at 9600 baud, main board USB at 115200 baud (`report_
 | M4 | `set production_min 2`, then `force production` | electrolysis and fan relays on; LCD "Time Left: 2 min" |
 | M5 | wait 2 min | relays off, polarity relay toggles, "Settling" 5 min, then valve opens 10 min |
 | M6 | L2 (storage tank) high during settling | "Tank full" state, valve stays closed until L2 goes low |
-| M7 | power off during production, power on | production continues (banner: "resumed the batch") |
+| M7 | power off during production, power on | production continues from the last 30-min checkpoint (banner: "resumed the batch"); e.g. off after 45 min → "Time Left: 150 min" |
 | M7b | type `cancel`, power off and on | standby; the batch is not resumed |
 | M10 | short times (`set transfer_min 1` ...), keep L3 dry until the transfer ends | LCD "Transfer pump error", no new batch although L1 = 1; `clear` (or L3 wet) returns to standby |
 | M8 | watch the RS485 line | a `;...:` frame every `report_interval` seconds |

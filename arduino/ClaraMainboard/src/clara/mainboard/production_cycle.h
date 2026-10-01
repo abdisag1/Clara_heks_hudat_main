@@ -55,6 +55,7 @@ struct CycleTimes {
   uint32_t settlingMs;
   uint32_t transferMs;
   uint8_t polarityCycles;  ///< Reverse polarity after every N completed batches.
+  uint32_t checkpointMs;   ///< Progress is saved every checkpointMs of a timed phase (default 30 min).
 };
 
 struct CycleInputs {
@@ -82,9 +83,21 @@ const uint8_t kCycleProgressSize = 8;
 void encodeProgress(const CycleProgress& progress, uint8_t* bytes);
 CycleProgress decodeProgress(const uint8_t* bytes);
 
-/** How often the progress is saved while a timed phase runs. With 8 EEPROM
- *  slots this is ~6 500 writes per slot and year (EEPROM is rated 100 000). */
-const uint32_t kProgressSavePeriodMs = 10ul * 60ul * 1000ul;
+/**
+ * Power-cut recovery works with checkpoints. While a timed phase runs, its
+ * progress is saved each time a whole checkpoint period has elapsed (30, 60,
+ * 90 ... minutes into production with the default 30 min). After a power cut
+ * the phase resumes from the last checkpoint reached, never from a point in
+ * between: interrupted after 45 min of a 180 min production it resumes at
+ * 30 min (150 min left), after 65 min at 60 min (120 min left).
+ *
+ * EEPROM wear, default settings (180 + 5 + 10 min batch, 8-slot ring):
+ * production start + 5 checkpoints + settling + transfer + standby = 9 saves
+ * per batch. At most ~7.4 batches a day is ~67 saves/day, spread over 8 slots
+ * = ~8.3 writes per slot per day, ~3 000 per year. The ATmega2560 EEPROM is
+ * rated 100 000 cycles, i.e. more than 30 years.
+ */
+const uint32_t kDefaultCheckpointMs = 30ul * 60ul * 1000ul;
 
 class ProductionCycle {
  public:
@@ -124,9 +137,13 @@ class ProductionCycle {
 
   uint32_t completedCycles() const { return completedCycles_; }
 
+  /** Progress to save; the elapsed time is rounded down to the last checkpoint. */
   CycleProgress progress(uint32_t nowMs) const;
 
-  /** @return true (once) when the progress should be written to EEPROM. */
+  /**
+   * @return true (once) when the progress should be written to EEPROM: on a
+   * state change, or when the running phase reaches its next checkpoint.
+   */
   bool takePersistRequest(uint32_t nowMs);
 
  private:
@@ -143,7 +160,7 @@ class ProductionCycle {
   bool polarityReversed_;
   uint32_t completedCycles_;
   bool persistPending_;
-  uint32_t lastPersistMs_;
+  uint32_t savedCheckpoint_;  ///< Checkpoints of the current phase already saved.
 };
 
 /** Human readable state name (flash string). */

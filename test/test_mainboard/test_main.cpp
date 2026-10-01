@@ -29,6 +29,7 @@ CycleTimes defaultTimes() {
   t.settlingMs = 5 * kMinute;
   t.transferMs = 10 * kMinute;
   t.polarityCycles = 1;
+  t.checkpointMs = 30 * kMinute;
   return t;
 }
 
@@ -238,23 +239,30 @@ void test_polarity_never_changes_while_electrolysis_is_on() {
   TEST_ASSERT_NOT_EQUAL(before, cycle.outputs().polarityReversed);
 }
 
-void test_progress_restore_resumes_the_batch() {
+/** Production interrupted @p minutes in; @return the time left after the reboot. */
+uint32_t remainingAfterPowerCut(uint32_t minutes) {
   ProductionCycle before;
   before.configure(defaultTimes());
   before.begin(0);
   before.update(0, inputs(true, false));
-  const CycleProgress saved = before.progress(100 * kMinute + 30000);  // 100.5 min in
-  TEST_ASSERT_EQUAL_UINT16(100, saved.elapsedMinutes);
-
   uint8_t bytes[kCycleProgressSize];
-  encodeProgress(saved, bytes);
+  encodeProgress(before.progress(minutes * kMinute), bytes);
 
   ProductionCycle after;  // power cut, reboot at t = 5 s
   after.configure(defaultTimes());
   after.restore(decodeProgress(bytes), 5000);
   TEST_ASSERT_EQUAL(kStateProduction, after.state());
   TEST_ASSERT_TRUE(after.outputs().electrolysis);
-  TEST_ASSERT_EQUAL_UINT32(80 * kMinute, after.remainingMs(5000));
+  return after.remainingMs(5000);
+}
+
+void test_progress_restore_resumes_from_last_30_min_checkpoint() {
+  // The examples from the specification: 180 min production.
+  TEST_ASSERT_EQUAL_UINT32(150 * kMinute, remainingAfterPowerCut(45));   // resumes at 30 min
+  TEST_ASSERT_EQUAL_UINT32(120 * kMinute, remainingAfterPowerCut(65));   // resumes at 60 min
+  TEST_ASSERT_EQUAL_UINT32(180 * kMinute, remainingAfterPowerCut(29));   // before the 1st checkpoint
+  TEST_ASSERT_EQUAL_UINT32(150 * kMinute, remainingAfterPowerCut(30));   // exactly on a checkpoint
+  TEST_ASSERT_EQUAL_UINT32(30 * kMinute, remainingAfterPowerCut(179));   // resumes at 150 min
 }
 
 void test_restore_clamps_elapsed_to_shortened_duration() {
@@ -291,8 +299,28 @@ void test_persist_requested_on_state_change_and_periodically() {
   cycle.update(1000, inputs(true, false));
   TEST_ASSERT_TRUE(cycle.takePersistRequest(1000));
   TEST_ASSERT_FALSE(cycle.takePersistRequest(2000));
-  TEST_ASSERT_FALSE(cycle.takePersistRequest(1000 + kProgressSavePeriodMs - 1));
-  TEST_ASSERT_TRUE(cycle.takePersistRequest(1000 + kProgressSavePeriodMs));
+  // Checkpoints are measured from the start of production (t = 1 s).
+  TEST_ASSERT_FALSE(cycle.takePersistRequest(1000 + 30 * kMinute - 1));
+  TEST_ASSERT_TRUE(cycle.takePersistRequest(1000 + 30 * kMinute));
+  TEST_ASSERT_FALSE(cycle.takePersistRequest(1000 + 59 * kMinute));
+  TEST_ASSERT_TRUE(cycle.takePersistRequest(1000 + 60 * kMinute));
+  TEST_ASSERT_EQUAL_UINT16(60, cycle.progress(1000 + 60 * kMinute + 30000).elapsedMinutes);
+}
+
+void test_saves_per_batch_protect_the_eeprom() {
+  // One complete 180 + 5 + 10 min batch, polled every second like the main loop.
+  ProductionCycle cycle;
+  cycle.configure(defaultTimes());
+  cycle.begin(0);
+  uint32_t saves = 0;
+  for (uint32_t t = 0; t <= 200 * kMinute; t += 1000) {
+    const bool bottleFull = t < 185 * kMinute;  // emptied by the transfer
+    cycle.update(t, inputs(bottleFull, false, true));
+    if (cycle.takePersistRequest(t)) ++saves;
+  }
+  TEST_ASSERT_EQUAL(kStateStandby, cycle.state());
+  // production start + checkpoints at 30/60/90/120/150 + settling + transfer + standby
+  TEST_ASSERT_EQUAL_UINT32(9, saves);
 }
 
 // --- Ecophi -----------------------------------------------------------------------
@@ -475,10 +503,11 @@ int main() {
   RUN_TEST(test_display_shows_transfer_pump_error);
   RUN_TEST(test_polarity_reverses_every_n_batches);
   RUN_TEST(test_polarity_never_changes_while_electrolysis_is_on);
-  RUN_TEST(test_progress_restore_resumes_the_batch);
+  RUN_TEST(test_progress_restore_resumes_from_last_30_min_checkpoint);
   RUN_TEST(test_restore_clamps_elapsed_to_shortened_duration);
   RUN_TEST(test_restore_of_garbage_state_goes_to_standby);
   RUN_TEST(test_persist_requested_on_state_change_and_periodically);
+  RUN_TEST(test_saves_per_batch_protect_the_eeprom);
   RUN_TEST(test_ecophi_frame_format_is_v22_compatible);
   RUN_TEST(test_ecophi_worst_case_frame_fits);
   RUN_TEST(test_ecophi_averager);

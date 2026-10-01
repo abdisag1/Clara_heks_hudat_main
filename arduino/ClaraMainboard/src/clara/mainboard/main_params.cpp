@@ -18,6 +18,7 @@ const char kNameVref[] CLARA_PROGMEM = "voltage_ref";
 const char kNameDivider[] CLARA_PROGMEM = "voltage_divider";
 const char kNameResume[] CLARA_PROGMEM = "resume_batch";
 const char kNameBaud[] CLARA_PROGMEM = "report_baud";
+const char kNameCheckpoint[] CLARA_PROGMEM = "checkpoint_min";
 
 const char kUnitMin[] CLARA_PROGMEM = "min";
 const char kUnitS[] CLARA_PROGMEM = "s";
@@ -35,6 +36,7 @@ const char kHelpDivider[] CLARA_PROGMEM = "voltage sensor divider ratio";
 const char kHelpResume[] CLARA_PROGMEM = "1 = continue batch after power cut";
 const char kHelpBaud[] CLARA_PROGMEM = "report + console baud: 9600..115200";
 const char kUnitBaud[] CLARA_PROGMEM = "baud";
+const char kHelpCheckpoint[] CLARA_PROGMEM = "save progress every N min (resume point)";
 
 // Defaults reproduce the behaviour of the v2.2 field firmware.
 const ParamInfo kTable[kParamCount] CLARA_PROGMEM = {
@@ -49,6 +51,8 @@ const ParamInfo kTable[kParamCount] CLARA_PROGMEM = {
     {kNameDivider,     kUnitNone, kHelpDivider,    1.0f,  100.0f,  22.2f,   3},
     {kNameResume,      kUnitNone, kHelpResume,     0.0f,  1.0f,    1.0f,    0},
     {kNameBaud,        kUnitBaud, kHelpBaud,       9600.0f, 115200.0f, 115200.0f, 0},
+    // At least 10 min to protect the EEPROM (see production_cycle.h).
+    {kNameCheckpoint,  kUnitMin,  kHelpCheckpoint, 10.0f, 120.0f,  30.0f,   0},
 };
 
 }  // namespace
