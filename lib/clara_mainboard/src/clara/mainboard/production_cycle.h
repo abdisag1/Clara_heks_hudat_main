@@ -54,7 +54,8 @@ struct CycleTimes {
   uint32_t settlingMs;
   uint32_t transferMs;
   uint8_t polarityCycles;  ///< Reverse polarity after every N completed batches.
-  uint32_t checkpointMs;   ///< Progress is saved every checkpointMs of a timed phase (default 30 min).
+  uint32_t checkpointMs;   ///< Progress is saved every checkpointMs of a timed phase (default 30 min);
+                           ///< 0 = no checkpoints (resume_batch = 0).
 };
 
 struct CycleInputs {

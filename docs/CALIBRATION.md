@@ -169,6 +169,10 @@ checkpoint reached. Example, 180 min production: interrupted after 45 min, it re
 30 min (150 min left); after 65 min it resumes at 60 min (120 min left); before 30 min it
 starts again from 0. Settling and transfer restart from the beginning.
 
+The checkpoints only work with `resume_batch 1`. With `resume_batch 0` no checkpoint is
+written (no EEPROM wear) and after a power cut the board always starts in standby; a
+full production bottle then starts a new batch from 0.
+
 EEPROM wear: a 180 + 5 + 10 min batch saves 9 times (production start, 30/60/90/120/150
 min, settling, transfer, standby), spread over 8 EEPROM slots. Measured in the tests:
 12 writes on the busiest byte for 10 batches, so the EEPROM (100 000 cycles) lasts more

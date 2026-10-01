@@ -477,8 +477,17 @@ void test_mainboard_transfer_pump_error() {
   TEST_ASSERT_EQUAL(mainboard::kStateProduction, bench.app.cycle().state());  // L1 still full
 }
 
+/** Total physical writes to the production-progress ring in @p eeprom. */
+uint32_t ringWrites(const fakes::FakeEeprom& eeprom) {
+  uint32_t writes = 0;
+  const uint16_t end = mainboard::kEepromProgressAddress +
+                       RingRecordStore::footprint(mainboard::kProgressSlots, mainboard::kCycleProgressSize);
+  for (uint16_t a = mainboard::kEepromProgressAddress; a < end; ++a) writes += eeprom.writesAt(a);
+  return writes;
+}
+
 /** Main board produces for @p minutes, power is cut, @return production time left after reboot. */
-uint32_t remainingAfterRealPowerCut(uint32_t minutes) {
+uint32_t remainingAfterRealPowerCut(uint32_t minutes, bool resume = true, uint32_t* ringWritesDuringProduction = 0) {
   fakes::FakeEeprom eeprom;
   DeadLink link;
   uint32_t productionStartMs = 0;
@@ -486,18 +495,32 @@ uint32_t remainingAfterRealPowerCut(uint32_t minutes) {
     fakes::FakeClock clock;
     MainBench bench(clock, link, eeprom);
     bench.app.begin();
+    if (!resume) bench.type("set resume_batch 0");
     bench.io.levels[0] = true;
+    uint32_t writesAtStart = 0;
     while (true) {  // run until "minutes" after electrolysis switched on
       clock.advanceMs(100);
       bench.app.update();
-      if (productionStartMs == 0 && bench.io.outputs.electrolysis) productionStartMs = clock.millis();
+      if (productionStartMs == 0 && bench.io.outputs.electrolysis) {
+        productionStartMs = clock.millis();
+        writesAtStart = ringWrites(eeprom);  // includes the save at production start
+      }
       if (productionStartMs != 0 && clock.millis() - productionStartMs >= minutes * kMinute) break;
     }
     TEST_ASSERT_EQUAL(mainboard::kStateProduction, bench.app.cycle().state());
+    if (ringWritesDuringProduction != 0) *ringWritesDuringProduction = ringWrites(eeprom) - writesAtStart;
   }
   fakes::FakeClock rebootClock;  // power cut: the board restarts with a fresh millis()
   MainBench rebooted(rebootClock, link, eeprom);
   rebooted.app.begin();
+  if (!resume) {
+    // Feature off: nothing is resumed, the board starts in standby with the outputs off.
+    TEST_ASSERT_FALSE(rebooted.app.status().progressRestored);
+    TEST_ASSERT_TRUE(rebooted.app.status().progressDiscarded);
+    TEST_ASSERT_EQUAL(mainboard::kStateStandby, rebooted.app.cycle().state());
+    TEST_ASSERT_FALSE(rebooted.io.outputs.electrolysis);
+    return 0;
+  }
   TEST_ASSERT_TRUE(rebooted.app.status().progressRestored);
   TEST_ASSERT_EQUAL(mainboard::kStateProduction, rebooted.app.cycle().state());
   TEST_ASSERT_TRUE(rebooted.io.outputs.electrolysis);
@@ -508,6 +531,18 @@ void test_mainboard_resumes_batch_after_power_cut() {
   TEST_ASSERT_EQUAL_UINT32(150 * kMinute, remainingAfterRealPowerCut(45));
   TEST_ASSERT_EQUAL_UINT32(120 * kMinute, remainingAfterRealPowerCut(65));
   TEST_ASSERT_EQUAL_UINT32(90 * kMinute, remainingAfterRealPowerCut(95));
+}
+
+void test_mainboard_no_checkpoints_when_resume_disabled() {
+  uint32_t writes = 0;
+  // resume_batch = 1: checkpoints at 30 and 60 min are written during 65 min of production.
+  TEST_ASSERT_EQUAL_UINT32(120 * kMinute, remainingAfterRealPowerCut(65, true, &writes));
+  TEST_ASSERT_GREATER_THAN_UINT32(0, writes);
+  // resume_batch = 0: no checkpoint is written and nothing is resumed.
+  remainingAfterRealPowerCut(45, false, &writes);
+  TEST_ASSERT_EQUAL_UINT32(0, writes);
+  remainingAfterRealPowerCut(65, false, &writes);
+  TEST_ASSERT_EQUAL_UINT32(0, writes);
 }
 
 void test_mainboard_eeprom_wear_per_batch() {
@@ -829,6 +864,7 @@ int main() {
   RUN_TEST(test_mainboard_full_production_cycle);
   RUN_TEST(test_mainboard_transfer_pump_error);
   RUN_TEST(test_mainboard_resumes_batch_after_power_cut);
+  RUN_TEST(test_mainboard_no_checkpoints_when_resume_disabled);
   RUN_TEST(test_mainboard_eeprom_wear_per_batch);
   RUN_TEST(test_mainboard_cancel_command_prevents_resume);
   RUN_TEST(test_mainboard_resume_can_be_disabled);

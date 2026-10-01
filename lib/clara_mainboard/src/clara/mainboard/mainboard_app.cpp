@@ -113,7 +113,11 @@ void MainboardApp::applyParams() {
   times.settlingMs = static_cast<uint32_t>(params_.get(kSettlingMin)) * 60000ul;
   times.transferMs = static_cast<uint32_t>(params_.get(kTransferMin)) * 60000ul;
   times.polarityCycles = static_cast<uint8_t>(params_.get(kPolarityCycles));
-  times.checkpointMs = static_cast<uint32_t>(params_.get(kCheckpointMin)) * 60000ul;
+  // Checkpoints only exist to resume after a power cut: with resume_batch = 0
+  // they are never used, so they are not written (saves EEPROM cycles). State
+  // changes are still saved (e.g. a transfer fault must survive a power cut).
+  const bool resume = params_.get(kResumeBatch) >= 0.5f;
+  times.checkpointMs = resume ? static_cast<uint32_t>(params_.get(kCheckpointMin)) * 60000ul : 0;
   cycle_.configure(times);
 
   const uint8_t debounceSamples = static_cast<uint8_t>(params_.get(kLevelDebounceS) * 1000.0f / kSensorPeriodMs);
