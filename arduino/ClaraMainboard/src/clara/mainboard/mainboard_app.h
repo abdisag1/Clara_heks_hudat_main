@@ -85,6 +85,9 @@ class MainboardApp {
    * debounce time.)
    */
   void cancelBatch() { forceState(kStateStandby); }
+
+  /** Acknowledges a "Transfer pump error". @return false if there was none. */
+  bool clearFault();
   /** Sends an Ecophi report immediately (and restarts the report period). */
   void sendReportNow();
 

@@ -88,6 +88,9 @@ void renderProcessPage(const DisplayModel& m, LcdLine lines[kLcdRows]) {
     case kStateStandby:
       appendLevelMessage(m, lines[1]);
       break;
+    case kStateTransferFault:
+      appendFlash(lines[1], sizeof(LcdLine), CLARA_F("Transfer pump error"));
+      break;
   }
 
   appendFlash(lines[2], sizeof(LcdLine), CLARA_F("Voltage: "));
@@ -111,6 +114,11 @@ void renderPage(const DisplayModel& model, uint8_t page, LcdLine lines[kLcdRows]
     renderSplash(lines);
   } else if (page % kPageCount == 0) {
     renderDosingPage(model, lines);
+    if (model.state == kStateTransferFault) {
+      // Keep the error visible on both alternating pages (replaces the last line).
+      clearLine(lines[3]);
+      appendFlash(lines[3], sizeof(LcdLine), CLARA_F("Transfer pump error"));
+    }
   } else {
     renderProcessPage(model, lines);
   }

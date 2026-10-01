@@ -151,6 +151,7 @@ pio test -e native
 | Ecophi `naclo` field | estimate: flow × target ratio | volume actually pumped (mL/min) |
 | Ecophi period | ~8 s (timer side effects) | `report_interval`, default 60 s |
 | LCD | `clear()` every 2 s (flicker), FRC shown as "g/L" | in-place updates, FRC in mg/L, link-loss and alarm messages |
+| Transfer pump failure | not detected | L3 checked when the transfer ends; "Transfer pump error" blocks new batches until L3 detects liquid or `clear` |
 | Flow coefficient at exactly 160 L/min | 1.0 (gap in if/else chain) | 1.35 |
 
 ## Protocols

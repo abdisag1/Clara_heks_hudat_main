@@ -57,6 +57,19 @@ Both boards must run v3 firmware. The v3 frame is 28 bytes with a checksum; v2.2
 16 unprotected bytes. Upload `arduino/ClaraDosing` to the dosing processor **and**
 `arduino/ClaraMainboard` to the Mega.
 
+## "Transfer pump error" on the LCD
+
+When a transfer ends, the main board checks level sensor 3. If L3 does not detect
+liquid at that moment, the batch did not reach the tank: the LCD shows **State: ERROR /
+Transfer pump error**, all outputs stay off, and **no new batch starts even if the
+production bottle (L1) is full**. The error is saved and survives a power cut.
+
+1. Check the transfer pump / valve (relay K4, P13, jumper J6), its power and its tubing,
+   and the L3 sensor and its cable.
+2. The error clears by itself as soon as L3 detects liquid (e.g. after transferring the
+   batch by hand). Or type `clear` on the main-board console once the fault is fixed.
+3. `status` on the main-board console shows `TRANSFER PUMP ERROR` while it is active.
+
 ## Other jumpers on sheet 2 (stepper-driven peristaltic pump)
 
 | Jumper | Setting | Function |

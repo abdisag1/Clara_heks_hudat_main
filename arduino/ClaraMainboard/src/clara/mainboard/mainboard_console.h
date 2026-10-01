@@ -24,6 +24,7 @@ namespace mainboard {
  *   status                   process state, sensors, dosing link
  *   get / set / defaults     calibration parameters
  *   cancel                   abandon the running batch, go to standby
+ *   clear                    acknowledge a "Transfer pump error"
  *   i2c                      scan the I2C bus (dosing board 0x21, LCD 0x27)
  *   force <standby|production|settling|transfer>   jump to a state (bench test)
  *   report                   send an Ecophi frame now

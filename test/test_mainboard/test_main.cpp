@@ -32,10 +32,11 @@ CycleTimes defaultTimes() {
   return t;
 }
 
-CycleInputs inputs(bool bottleFull, bool tankFull) {
+CycleInputs inputs(bool bottleFull, bool tankFull, bool level3 = true) {
   CycleInputs i;
   i.productionBottleFull = bottleFull;
   i.storageTankFull = tankFull;
+  i.level3 = level3;
   return i;
 }
 
@@ -127,6 +128,82 @@ void runOneBatch(ProductionCycle& cycle, uint32_t& now) {
   now += 10 * kMinute;
   cycle.update(now, inputs(false, false));
   TEST_ASSERT_EQUAL(kStateStandby, cycle.state());
+}
+
+// --- Transfer pump error ----------------------------------------------------------
+
+/** Runs one batch up to the end of the transfer; L3 = @p level3AtEnd at that moment. */
+void runToTransferEnd(ProductionCycle& cycle, bool level3AtEnd) {
+  cycle.configure(defaultTimes());
+  cycle.begin(0);
+  cycle.update(0, inputs(true, false, false));                // L3 off during the batch: not checked
+  cycle.update(180 * kMinute, inputs(true, false, false));
+  cycle.update(185 * kMinute, inputs(false, false, false));
+  TEST_ASSERT_EQUAL(kStateTransferring, cycle.state());
+  cycle.update(195 * kMinute - 1, inputs(false, false, false));  // still transferring: not checked
+  TEST_ASSERT_EQUAL(kStateTransferring, cycle.state());
+  cycle.update(195 * kMinute, inputs(false, false, level3AtEnd));
+}
+
+void test_transfer_ok_when_level3_on_after_transfer() {
+  ProductionCycle cycle;
+  runToTransferEnd(cycle, true);
+  TEST_ASSERT_EQUAL(kStateStandby, cycle.state());
+  TEST_ASSERT_FALSE(cycle.hasFault());
+}
+
+void test_transfer_fault_when_level3_off_after_transfer() {
+  ProductionCycle cycle;
+  runToTransferEnd(cycle, false);
+  TEST_ASSERT_EQUAL(kStateTransferFault, cycle.state());
+  const CycleOutputs o = cycle.outputs();
+  TEST_ASSERT_FALSE(o.electrolysis);
+  TEST_ASSERT_FALSE(o.fan);
+  TEST_ASSERT_FALSE(o.transferValve);
+
+  // L1 full must not start a new batch while the error is active.
+  for (uint32_t t = 196; t < 300; ++t) cycle.update(t * kMinute, inputs(true, false, false));
+  TEST_ASSERT_EQUAL(kStateTransferFault, cycle.state());
+  TEST_ASSERT_FALSE(cycle.outputs().electrolysis);
+
+  // Liquid detected at L3 (e.g. transferred by hand): back to standby, then a new batch.
+  cycle.update(300 * kMinute, inputs(true, false, true));
+  TEST_ASSERT_EQUAL(kStateStandby, cycle.state());
+  cycle.update(300 * kMinute + 1, inputs(true, false, true));
+  TEST_ASSERT_EQUAL(kStateProduction, cycle.state());
+}
+
+void test_transfer_fault_cleared_by_operator_and_kept_after_power_cut() {
+  ProductionCycle cycle;
+  runToTransferEnd(cycle, false);
+  TEST_ASSERT_FALSE(ProductionCycle().clearFault(0));  // nothing to clear
+
+  uint8_t bytes[kCycleProgressSize];
+  encodeProgress(cycle.progress(200 * kMinute), bytes);
+  ProductionCycle rebooted;
+  rebooted.configure(defaultTimes());
+  rebooted.restore(decodeProgress(bytes), 0);
+  TEST_ASSERT_EQUAL(kStateTransferFault, rebooted.state());
+
+  TEST_ASSERT_TRUE(rebooted.clearFault(1000));
+  TEST_ASSERT_EQUAL(kStateStandby, rebooted.state());
+}
+
+void test_display_shows_transfer_pump_error() {
+  DisplayModel m;
+  memset(&m, 0, sizeof(m));
+  m.state = kStateTransferFault;
+  m.linkOk = true;
+  m.chemicalAvailable = true;
+  LcdLine lines[kLcdRows];
+  renderPage(m, 1, lines);
+  TEST_ASSERT_EQUAL_STRING("State: ERROR        ", lines[0]);
+  TEST_ASSERT_EQUAL_STRING("Transfer pump error ", lines[1]);
+  renderPage(m, 0, lines);  // also on the other page
+  TEST_ASSERT_EQUAL_STRING("Transfer pump error ", lines[3]);
+  m.linkOk = false;         // even when the dosing board is not answering
+  renderPage(m, 0, lines);
+  TEST_ASSERT_EQUAL_STRING("Transfer pump error ", lines[3]);
 }
 
 void test_polarity_reverses_every_n_batches() {
@@ -360,8 +437,8 @@ void test_display_lines_never_exceed_20_columns() {
   m.remainingMin = 65535;
   LcdLine lines[kLcdRows];
   const ProcessState states[] = {kStateStandby, kStateProduction, kStateSettling, kStateTransferring,
-                                 kStateWaitingForSpace};
-  for (uint8_t s = 0; s < 5; ++s) {
+                                 kStateWaitingForSpace, kStateTransferFault};
+  for (uint8_t s = 0; s < 6; ++s) {
     m.state = states[s];
     for (uint8_t page = 0; page < kPageCount; ++page) {
       renderPage(m, page, lines);
@@ -392,6 +469,10 @@ int main() {
   RUN_TEST(test_full_cycle_timing_is_exact);
   RUN_TEST(test_late_loop_does_not_stretch_the_cycle);
   RUN_TEST(test_waits_for_space_in_storage_tank);
+  RUN_TEST(test_transfer_ok_when_level3_on_after_transfer);
+  RUN_TEST(test_transfer_fault_when_level3_off_after_transfer);
+  RUN_TEST(test_transfer_fault_cleared_by_operator_and_kept_after_power_cut);
+  RUN_TEST(test_display_shows_transfer_pump_error);
   RUN_TEST(test_polarity_reverses_every_n_batches);
   RUN_TEST(test_polarity_never_changes_while_electrolysis_is_on);
   RUN_TEST(test_progress_restore_resumes_the_batch);

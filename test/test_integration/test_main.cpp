@@ -431,6 +431,7 @@ void test_mainboard_full_production_cycle() {
       electrolysisOffMs = clock.millis();
       bench.io.levels[0] = false;  // the batch will be transferred
     }
+    if (bench.io.outputs.transferValve) bench.io.levels[2] = true;  // liquid reaches L3
     if (bench.io.outputs.transferValve && !valveWasOn) valveOnMs = clock.millis();
     if (!bench.io.outputs.transferValve && valveWasOn) valveOffMs = clock.millis();
     wasOn = bench.io.outputs.electrolysis;
@@ -444,6 +445,36 @@ void test_mainboard_full_production_cycle() {
   TEST_ASSERT_UINT32_WITHIN(10, 10 * kMinute, valveOffMs - valveOnMs);
   TEST_ASSERT_EQUAL(mainboard::kStateStandby, bench.app.cycle().state());
   TEST_ASSERT_TRUE(bench.io.outputs.polarityReversed);  // reversed after the first batch
+}
+
+void test_mainboard_transfer_pump_error() {
+  fakes::FakeClock clock;
+  fakes::FakeEeprom eeprom;
+  DeadLink link;
+  MainBench bench(clock, link, eeprom);
+  bench.app.begin();
+  bench.type("set production_min 1");
+  bench.type("set settling_min 1");
+  bench.type("set transfer_min 1");
+  bench.io.levels[0] = true;  // brine; L3 stays off: the transfer pump "fails"
+  for (uint32_t t = 0; t < 5 * kMinute; t += 10) {
+    clock.advanceMs(10);
+    bench.app.update();
+  }
+  TEST_ASSERT_EQUAL(mainboard::kStateTransferFault, bench.app.cycle().state());
+  TEST_ASSERT_EQUAL_UINT32(1, bench.app.cycle().completedCycles());
+  TEST_ASSERT_FALSE(bench.io.outputs.electrolysis);  // L1 = 1, but no new batch
+  TEST_ASSERT_TRUE(bench.display.shows("Transfer pump error"));
+
+  bench.type("status");
+  TEST_ASSERT_TRUE(bench.serial.contains("TRANSFER PUMP ERROR"));
+  bench.type("clear");
+  TEST_ASSERT_TRUE(bench.serial.contains("transfer pump error cleared"));
+  for (uint32_t t = 0; t < 2 * kSecond; t += 10) {
+    clock.advanceMs(10);
+    bench.app.update();
+  }
+  TEST_ASSERT_EQUAL(mainboard::kStateProduction, bench.app.cycle().state());  // L1 still full
 }
 
 void test_mainboard_resumes_batch_after_power_cut() {
@@ -767,6 +798,7 @@ int main() {
   RUN_TEST(test_changed_interval_takes_effect);
   RUN_TEST(test_status_and_help_commands);
   RUN_TEST(test_mainboard_full_production_cycle);
+  RUN_TEST(test_mainboard_transfer_pump_error);
   RUN_TEST(test_mainboard_resumes_batch_after_power_cut);
   RUN_TEST(test_mainboard_cancel_command_prevents_resume);
   RUN_TEST(test_mainboard_resume_can_be_disabled);

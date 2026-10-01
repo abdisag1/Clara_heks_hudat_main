@@ -169,6 +169,9 @@ switch the resume feature off completely, use `set resume_batch 0`. If the produ
 bottle still reads full, a new batch starts after `level_debounce` seconds, so empty
 or refill the bottle first.
 
+**Transfer pump error:** see [TROUBLESHOOTING.md](TROUBLESHOOTING.md). `clear`
+acknowledges it once the pump or valve is fixed.
+
 **Bench tests:** `force production`, `force settling`, `force transfer` and
 `force standby` jump directly to a state so you can check each relay. `report` sends an
 Ecophi frame immediately.

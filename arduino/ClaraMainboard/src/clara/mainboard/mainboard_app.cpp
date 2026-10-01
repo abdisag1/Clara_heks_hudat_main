@@ -57,7 +57,8 @@ void MainboardApp::begin() {
   uint8_t saved[kCycleProgressSize];
   if (progressStore_.load(saved)) {
     CycleProgress progress = decodeProgress(saved);
-    const bool interrupted = progress.state != kStateStandby;
+    // A transfer fault is not a batch: it is kept even with resume_batch = 0.
+    const bool interrupted = progress.state != kStateStandby && progress.state != kStateTransferFault;
     if (interrupted && params_.get(kResumeBatch) < 0.5f) {
       // Resume disabled: start in standby, but keep the batch counter and the
       // electrode polarity so the reversal schedule stays correct.
@@ -140,6 +141,7 @@ void MainboardApp::update() {
   CycleInputs inputs;
   inputs.productionBottleFull = status_.levels[0];
   inputs.storageTankFull = status_.levels[1];
+  inputs.level3 = status_.levels[2];
   cycle_.update(nowMs, inputs);
   io_.applyOutputs(cycle_.outputs());
   persistProgress(nowMs);
@@ -233,6 +235,13 @@ void MainboardApp::forceState(ProcessState state) {
   cycle_.forceState(state, nowMs);
   io_.applyOutputs(cycle_.outputs());
   persistProgress(nowMs, true);
+}
+
+bool MainboardApp::clearFault() {
+  const uint32_t nowMs = clock_.millis();
+  if (!cycle_.clearFault(nowMs)) return false;
+  persistProgress(nowMs, true);
+  return true;
 }
 
 void MainboardApp::persistProgress(uint32_t nowMs, bool force) {

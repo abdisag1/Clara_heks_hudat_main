@@ -56,7 +56,8 @@ void ProductionCycle::restore(const CycleProgress& progress, uint32_t nowMs) {
       break;
     }
     case kStateWaitingForSpace:
-      enter(kStateWaitingForSpace, nowMs);
+    case kStateTransferFault:  // the fault survives a power cut
+      enter(saved, nowMs);
       break;
     default:
       enter(kStateStandby, nowMs);
@@ -120,9 +121,25 @@ void ProductionCycle::update(uint32_t nowMs, const CycleInputs& inputs) {
       break;
 
     case kStateTransferring:
-      if (timeUp) enter(kStateStandby, deadlineMs());
+      if (timeUp) {
+        // Only checked here, when the transfer has just ended: no liquid at L3
+        // means the batch did not arrive (transfer pump or valve failure).
+        enter(inputs.level3 ? kStateStandby : kStateTransferFault, deadlineMs());
+      }
+      break;
+
+    case kStateTransferFault:
+      // Blocks new batches (even with L1 full) until the liquid arrives
+      // (L3 on, e.g. transferred by hand) or the operator types "clear".
+      if (inputs.level3) enter(kStateStandby, nowMs);
       break;
   }
+}
+
+bool ProductionCycle::clearFault(uint32_t nowMs) {
+  if (state_ != kStateTransferFault) return false;
+  enter(kStateStandby, nowMs);
+  return true;
 }
 
 void ProductionCycle::forceState(ProcessState state, uint32_t nowMs) { enter(state, nowMs); }
@@ -176,6 +193,8 @@ const char* stateName(ProcessState state) {
       return CLARA_F("Transferring");
     case kStateWaitingForSpace:
       return CLARA_F("Tank full");
+    case kStateTransferFault:
+      return CLARA_F("ERROR");
   }
   return CLARA_F("?");
 }

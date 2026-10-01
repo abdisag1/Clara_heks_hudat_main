@@ -15,7 +15,16 @@
  *      |   WAITING_FOR_SPACE --- storage tank not full -----> |
  *      |                                                      v
  *      +----------- transfer_min elapsed ------------- TRANSFERRING (valve open)
+ *      |              and L3 on                               |
+ *      |                                                      | transfer_min elapsed and L3 off
+ *      +---- L3 on, or console "clear" ---- TRANSFER_FAULT <--+
+ *                                          ("Transfer pump error", outputs off,
+ *                                           no new batch even if L1 is full)
  * @endcode
+ *
+ * The transfer check runs only at the moment the transfer ends: if level sensor
+ * 3 does not see liquid then, the batch did not arrive and the transfer pump or
+ * valve has failed.
  *
  * Timing is based on elapsed milliseconds, not on counting ticks, so it has the
  * accuracy of the crystal (v2.2 counted 59-second "minutes" of a re-configured
@@ -37,6 +46,7 @@ enum ProcessState {
   kStateSettling = 4,
   kStateTransferring = 5,
   kStateWaitingForSpace = 6,
+  kStateTransferFault = 7,  ///< Transfer finished but L3 saw no liquid ("Transfer pump error").
 };
 
 struct CycleTimes {
@@ -49,6 +59,7 @@ struct CycleTimes {
 struct CycleInputs {
   bool productionBottleFull;  ///< Level sensor 1: brine present in the production bottle.
   bool storageTankFull;       ///< Level sensor 2: NaClO storage tank full.
+  bool level3;                ///< Level sensor 3: checked when the transfer ends.
 };
 
 struct CycleOutputs {
@@ -94,6 +105,11 @@ class ProductionCycle {
 
   /** Jumps to a state (bench testing from the console). */
   void forceState(ProcessState state, uint32_t nowMs);
+
+  /** Acknowledges a transfer fault (console "clear"). @return false if there was none. */
+  bool clearFault(uint32_t nowMs);
+
+  bool hasFault() const { return state_ == kStateTransferFault; }
 
   ProcessState state() const { return state_; }
   CycleOutputs outputs() const;

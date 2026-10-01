@@ -68,6 +68,12 @@ void MainboardConsole::execute(char* line) {
     printStatus();
   } else if (is(tokens[0], CLARA_F("force"))) {
     handleForce(tokens, count);
+  } else if (is(tokens[0], CLARA_F("clear"))) {
+    if (app_.clearFault()) {
+      out_.printLineFlash(CLARA_F("ok - transfer pump error cleared, standby"));
+    } else {
+      out_.printLineFlash(CLARA_F("no error to clear"));
+    }
   } else if (is(tokens[0], CLARA_F("i2c"))) {
     scanBus();
   } else if (is(tokens[0], CLARA_F("cancel"))) {
@@ -86,6 +92,7 @@ void MainboardConsole::printHelp() {
   out_.printLineFlash(CLARA_F("  status                live values"));
   paramConsole_.printHelp();
   out_.printLineFlash(CLARA_F("  cancel                abandon the running batch (standby)"));
+  out_.printLineFlash(CLARA_F("  clear                 acknowledge a transfer pump error"));
   out_.printLineFlash(CLARA_F("  i2c                   list devices on the I2C bus"));
   out_.printLineFlash(CLARA_F("  force <standby|production|settling|transfer>"));
   out_.printLineFlash(CLARA_F("                        jump to a state (bench test)"));
@@ -106,6 +113,11 @@ void MainboardConsole::printStatus() {
   out_.printUInt(cycle.completedCycles());
   out_.printFlash(cycle.outputs().polarityReversed ? CLARA_F("  polarity reversed") : CLARA_F("  polarity normal"));
   out_.newline();
+  if (cycle.hasFault()) {
+    out_.printLineFlash(CLARA_F("TRANSFER PUMP ERROR - L3 saw no liquid after the transfer"));
+    out_.printLineFlash(CLARA_F("  no new batch starts; fix the pump/valve, then type clear"));
+    out_.printLineFlash(CLARA_F("  (clears by itself when L3 detects liquid)"));
+  }
 
   out_.printFlash(CLARA_F("levels L1 "));
   out_.printUInt(s.levels[0]);
