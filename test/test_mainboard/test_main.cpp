@@ -447,6 +447,15 @@ void test_display_alarms_and_splash() {
   renderPage(m, 0, lines);
   TEST_ASSERT_EQUAL_STRING("NaClO tank EMPTY    ", lines[1]);
 
+  m.chemicalAvailable = true;
+  m.pumpSaturated = true;  // the warning must fit in 20 columns
+  renderPage(m, 0, lines);
+  TEST_ASSERT_EQUAL_STRING("Pump MAX: 3.25 mL   ", lines[1]);
+  m.lastDoseMl = 123.45f;
+  renderPage(m, 0, lines);
+  TEST_ASSERT_EQUAL_STRING("Pump MAX: 123.45 mL ", lines[1]);
+  m.pumpSaturated = false;
+
   m.linkOk = false;
   renderPage(m, 0, lines);
   TEST_ASSERT_EQUAL_STRING("Dosing board: NO    ", lines[0]);

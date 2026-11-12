@@ -40,9 +40,11 @@ void renderDosingPage(const DisplayModel& m, LcdLine lines[kLcdRows]) {
   if (!m.chemicalAvailable) {
     appendFlash(lines[1], sizeof(LcdLine), CLARA_F("NaClO tank EMPTY"));
   } else {
-    appendFlash(lines[1], sizeof(LcdLine), CLARA_F("NaClO.Inj: "));
+    // "NaClO.Inj: 22.36 mL" already uses 19 of the 20 columns, so the
+    // saturation warning gets its own shorter wording to stay visible.
+    appendFlash(lines[1], sizeof(LcdLine), m.pumpSaturated ? CLARA_F("Pump MAX: ") : CLARA_F("NaClO.Inj: "));
     appendFixed(lines[1], sizeof(LcdLine), m.lastDoseMl, 2);
-    appendFlash(lines[1], sizeof(LcdLine), m.pumpSaturated ? CLARA_F(" mL MAX") : CLARA_F(" mL"));
+    appendFlash(lines[1], sizeof(LcdLine), CLARA_F(" mL"));
   }
 
   appendFlash(lines[2], sizeof(LcdLine), CLARA_F("Comm.Flow: "));
