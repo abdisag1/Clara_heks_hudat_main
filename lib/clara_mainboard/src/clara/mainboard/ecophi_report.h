@@ -15,11 +15,13 @@
  * | L1..L3    | level sensors (production, storage, NaClO tank) | 0 / 1      |
  * | naclo     | NaClO dosed, mL/min averaged over the period    | 2 decimals |
  * | frc       | target free residual chlorine, mg/L             | 2 decimals |
- * | active_cl | active chlorine sensor (not fitted: 0.00)       | 2 decimals |
- * | ph        | pH sensor (not fitted: 0.00)                    | 2 decimals |
+ * | active_cl | active chlorine, mg/L: parameter active_cl      | 2 decimals |
+ * | ph        | water pH: parameter water_ph                    | 2 decimals |
  *
  * Change: v2.2 estimated "naclo" from flow x target ratio; v3 reports the
  * volume the pump actually delivered (it reads 0 when the NaClO tank is empty).
+ * active_cl and ph are the values measured by hand on the last site visit
+ * (parameters active_cl and water_ph), because no sensors are fitted.
  */
 #ifndef CLARA_ECOPHI_REPORT_H
 #define CLARA_ECOPHI_REPORT_H

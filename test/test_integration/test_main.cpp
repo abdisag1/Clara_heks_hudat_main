@@ -775,6 +775,30 @@ void test_system_telemetry_reaches_display_and_ecophi() {
   TEST_ASSERT_EQUAL_FLOAT(1.5f, frc);
   const float expectedRate = static_cast<float>(expectedNaclOMl(expectedFlowLpm(50.0), 1.0));
   TEST_ASSERT_FLOAT_WITHIN(expectedRate * 0.05f, expectedRate, naclo);  // pumped mL/min
+  TEST_ASSERT_EQUAL_FLOAT(0.5f, activeCl);  // defaults until a site visit
+  TEST_ASSERT_EQUAL_FLOAT(7.1f, ph);
+}
+
+void test_mainboard_reports_site_visit_ph_and_chlorine() {
+  fakes::FakeEeprom eeprom;
+  {
+    fakes::FakeClock clock;
+    DeadLink link;
+    MainBench bench(clock, link, eeprom);
+    bench.app.begin();
+    bench.type("report");
+    TEST_ASSERT_TRUE(bench.serial.contains(",0.50,7.10:"));
+    bench.type("set water_ph 6.85");
+    bench.type("set active_cl 0.42");
+    bench.type("set water_ph 15");  // outside 0..14: rejected
+    TEST_ASSERT_EQUAL_FLOAT(6.85f, bench.app.params().get(mainboard::kWaterPh));
+  }
+  fakes::FakeClock clock;  // saved across a reboot
+  DeadLink link;
+  MainBench rebooted(clock, link, eeprom);
+  rebooted.app.begin();
+  rebooted.type("report");
+  TEST_ASSERT_TRUE(rebooted.serial.contains(",0.42,6.85:"));
 }
 
 void test_system_level3_low_stops_dosing_and_shows_alarm() {
@@ -870,6 +894,7 @@ int main() {
   RUN_TEST(test_mainboard_resume_can_be_disabled);
   RUN_TEST(test_mainboard_keeps_settings_saved_by_previous_firmware);
   RUN_TEST(test_mainboard_report_baud_rate);
+  RUN_TEST(test_mainboard_reports_site_visit_ph_and_chlorine);
   RUN_TEST(test_mainboard_imports_v22_settings);
   RUN_TEST(test_mainboard_console_changes_production_time);
   RUN_TEST(test_mainboard_shows_link_loss);

@@ -149,6 +149,7 @@ pio test -e native
 | Level sensors | array comparisons that read past the buffers | 10 s consecutive-sample filter (`level_debounce`) |
 | NaClO tank empty | pump stopped at the next 20 s decision | pump stops within 1 s; LCD shows "NaClO tank EMPTY" |
 | Ecophi `naclo` field | estimate: flow × target ratio | volume actually pumped (mL/min) |
+| Ecophi `active_cl`, `ph` fields | always 0.00 (no sensors) | values measured on the last site visit (`active_cl`, `water_ph`; defaults 0.5 mg/L, 7.1) |
 | Ecophi period | ~8 s (timer side effects) | `report_interval`, default 60 s |
 | LCD | `clear()` every 2 s (flicker), FRC shown as "g/L" | in-place updates, FRC in mg/L, link-loss and alarm messages |
 | Transfer pump failure | not detected | L3 checked when the transfer ends; "Transfer pump error" blocks new batches until L3 detects liquid or `clear` |

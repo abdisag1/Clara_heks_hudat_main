@@ -19,6 +19,8 @@ const char kNameDivider[] CLARA_PROGMEM = "voltage_divider";
 const char kNameResume[] CLARA_PROGMEM = "resume_batch";
 const char kNameBaud[] CLARA_PROGMEM = "report_baud";
 const char kNameCheckpoint[] CLARA_PROGMEM = "checkpoint_min";
+const char kNameWaterPh[] CLARA_PROGMEM = "water_ph";
+const char kNameActiveCl[] CLARA_PROGMEM = "active_cl";
 
 const char kUnitMin[] CLARA_PROGMEM = "min";
 const char kUnitS[] CLARA_PROGMEM = "s";
@@ -37,6 +39,10 @@ const char kHelpResume[] CLARA_PROGMEM = "1 = continue batch after power cut";
 const char kHelpBaud[] CLARA_PROGMEM = "report + console baud: 9600..115200";
 const char kUnitBaud[] CLARA_PROGMEM = "baud";
 const char kHelpCheckpoint[] CLARA_PROGMEM = "save progress every N min (resume point)";
+const char kUnitPh[] CLARA_PROGMEM = "pH";
+const char kUnitMgL[] CLARA_PROGMEM = "mg/L";
+const char kHelpWaterPh[] CLARA_PROGMEM = "measured water pH, sent in report";
+const char kHelpActiveCl[] CLARA_PROGMEM = "measured active chlorine, sent in report";
 
 // Defaults reproduce the behaviour of the v2.2 field firmware.
 const ParamInfo kTable[kParamCount] CLARA_PROGMEM = {
@@ -53,6 +59,10 @@ const ParamInfo kTable[kParamCount] CLARA_PROGMEM = {
     {kNameBaud,        kUnitBaud, kHelpBaud,       9600.0f, 115200.0f, 115200.0f, 0},
     // At least 10 min to protect the EEPROM (see production_cycle.h).
     {kNameCheckpoint,  kUnitMin,  kHelpCheckpoint, 10.0f, 120.0f,  30.0f,   0},
+    // No pH / chlorine sensors are fitted: the engineer measures the treated
+    // water on each site visit and enters the values; they are reported as-is.
+    {kNameWaterPh,     kUnitPh,   kHelpWaterPh,    0.0f,  14.0f,   7.1f,    2},
+    {kNameActiveCl,    kUnitMgL,  kHelpActiveCl,   0.0f,  10.0f,   0.5f,    2},
 };
 
 }  // namespace

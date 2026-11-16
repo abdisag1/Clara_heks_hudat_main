@@ -219,8 +219,9 @@ void MainboardApp::sendReport(uint32_t nowMs) {
   frame.level3 = status_.levels[2];
   frame.naclOMlPerMin = dosedRate_.takeRate(status_.dosing.totalNaclOMicroL, status_.linkOk, nowMs);
   frame.targetFrcMgL = status_.dosing.targetFrcMgL;
-  frame.activeChlorine = averager_.averageActiveChlorine();
-  frame.ph = averager_.averagePh();
+  // No sensors fitted: report the values measured on the last site visit.
+  frame.activeChlorine = params_.get(kActiveChlorine);
+  frame.ph = params_.get(kWaterPh);
   averager_.reset();
 
   char text[kEcophiFrameCapacity];

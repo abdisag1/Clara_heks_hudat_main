@@ -26,6 +26,8 @@ enum Param {
   kResumeBatch,        ///< 1: continue an interrupted batch after a power cut, 0: start in standby.
   kReportBaud,         ///< Baud rate of the serial port (Ecophi report + console).
   kCheckpointMin,      ///< Production progress is saved every N minutes (resume point after a power cut).
+  kWaterPh,            ///< pH of the treated water, measured by hand on site visits (no pH sensor fitted).
+  kActiveChlorine,     ///< Active chlorine of the treated water, mg/L, measured by hand on site visits.
   kParamCount
 };
 

@@ -153,6 +153,13 @@ output also goes out on RS485; the Ecophi parser ignores it (it never starts wit
 | 8 | `resume_batch` | 1 | - | 1: continue an interrupted batch after a power cut; 0: always start in standby |
 | 9 | `report_baud` | 115200 | baud | serial speed of the Ecophi report **and** the main-board console: 9600, 19200, 38400, 57600 or 115200 |
 | 10 | `checkpoint_min` | 30 | min | production progress saved every N min; resume point after a power cut (10–120) |
+| 11 | `water_ph` | 7.1 | pH | pH of the treated water measured on the last site visit; sent as `ph` in the report (0–14) |
+| 12 | `active_cl` | 0.5 | mg/L | active chlorine measured on the last site visit; sent as `active_cl` in the report (0–10) |
+
+**Site-visit water quality:** no pH or chlorine sensor is fitted. On each quarterly
+visit, measure the treated water at the outlet (pH and DPD chlorine test) and enter
+the results, for example `set water_ph 7.25` and `set active_cl 0.45`. The values are
+saved in EEPROM and sent in every report until the next visit.
 
 **Baud rate:** the Ecophi RS485 link and the USB console share the Mega's serial
 port, so `set report_baud 9600` switches both at once. Change the Serial Monitor to the
