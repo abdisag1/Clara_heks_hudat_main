@@ -739,7 +739,16 @@ struct SystemBench {
       dosing.chemical.set(main.io.chemicalSignal);  // main pin 9 -> dosing A3
       dosing.step();
       main.app.update();
+      main.shell.update();
     }
+  }
+
+  /** Types a main-board command and runs until every dosing command was answered. */
+  void command(const char* line) {
+    main.serial.clear();
+    main.type(line);
+    for (int i = 0; i < 5000 && main.shell.dosingBusy(); ++i) run(1);
+    TEST_ASSERT_FALSE(main.shell.dosingBusy());
   }
 };
 
@@ -867,6 +876,174 @@ void test_system_link_diagnostics() {
   TEST_ASSERT_TRUE(system.dosing.console.contains("I2C requests from main board: 0"));
 }
 
+// --- Calibrating the dosing board from the main board (I2C commands) ---------
+
+void test_dosing_executes_link_commands() {
+  fakes::FakeClock clock;
+  fakes::FakeEeprom eeprom;
+  DosingBench bench(clock, eeprom);
+  bench.app.begin();
+  link::CommandFrame c;
+  c.sequence = 1;
+  c.command = link::kCmdSetParam;
+  c.index = dosing::kTargetFrc;
+  c.value = 1.8f;
+  link::CommandReply r = bench.app.execute(c);
+  TEST_ASSERT_EQUAL_UINT8(link::kResultOk, r.result);
+  TEST_ASSERT_EQUAL_FLOAT(1.8f, bench.app.params().get(dosing::kTargetFrc));
+
+  c.value = 50.0f;  // out of range: unchanged
+  r = bench.app.execute(c);
+  TEST_ASSERT_EQUAL_UINT8(link::kResultOutOfRange, r.result);
+  TEST_ASSERT_EQUAL_FLOAT(1.8f, r.value);
+
+  c.index = 200;
+  TEST_ASSERT_EQUAL_UINT8(link::kResultBadIndex, bench.app.execute(c).result);
+
+  c.command = link::kCmdGetParam;
+  c.index = dosing::kCoefLowFlow;
+  r = bench.app.execute(c);
+  TEST_ASSERT_EQUAL_FLOAT(1.45f, r.value);
+  TEST_ASSERT_EQUAL_UINT32(dosing::kParamCount, r.extra);
+
+  // "set flow_meter 2" loads the 2-inch datasheet calibration, like "meter 2".
+  c.command = link::kCmdSetParam;
+  c.index = dosing::kFlowMeterSize;
+  c.value = 2.0f;
+  TEST_ASSERT_EQUAL_UINT8(link::kResultOk, bench.app.execute(c).result);
+  TEST_ASSERT_EQUAL_FLOAT(0.2f, bench.app.params().get(dosing::kFlowKFactor));
+
+  c.command = link::kCmdPumpCalDone;  // no pump run yet
+  TEST_ASSERT_EQUAL_UINT8(link::kResultNotReady, bench.app.execute(c).result);
+  c.command = 99;
+  TEST_ASSERT_EQUAL_UINT8(link::kResultUnknownCommand, bench.app.execute(c).result);
+
+  // Saved: a reboot keeps the values.
+  fakes::FakeClock clock2;
+  DosingBench rebooted(clock2, eeprom);
+  rebooted.app.begin();
+  TEST_ASSERT_EQUAL_FLOAT(1.8f, rebooted.app.params().get(dosing::kTargetFrc));
+}
+
+void test_system_set_dosing_parameter_from_main_board() {
+  SystemBench system;
+  system.begin();
+  system.run(3 * kSecond);
+
+  system.command("dosing set target_frc 1.8");
+  TEST_ASSERT_TRUE(system.main.serial.contains("ok - dosing board saved:  0  target_frc = 1.80 mg/L"));
+  TEST_ASSERT_EQUAL_FLOAT(1.8f, system.dosing.app.params().get(dosing::kTargetFrc));
+  system.run(2 * kSecond);
+  TEST_ASSERT_EQUAL_FLOAT(1.8f, system.main.app.status().dosing.targetFrcMgL);  // telemetry follows
+
+  system.command("dosing set coef_low 9");
+  TEST_ASSERT_TRUE(system.main.serial.contains("error - out of range, allowed 0.000 .. 5.000"));
+  TEST_ASSERT_EQUAL_FLOAT(1.45f, system.dosing.app.params().get(dosing::kCoefLowFlow));
+
+  system.command("dosing set nonsense 1");
+  TEST_ASSERT_TRUE(system.main.serial.contains("unknown dosing parameter"));
+
+  system.command("dosing get");
+  TEST_ASSERT_TRUE(system.main.serial.contains(" 0  target_frc = 1.80 mg/L"));
+  TEST_ASSERT_TRUE(system.main.serial.contains("14  flow_meter = 3 inch"));
+  TEST_ASSERT_FALSE(system.main.serial.contains(";"));  // nothing the Ecophi receiver could misread
+
+  system.command("dosing meter 2");
+  TEST_ASSERT_TRUE(system.main.serial.contains("flow_meter = 2 inch"));
+  TEST_ASSERT_TRUE(system.main.serial.contains("flow_k = 0.2000"));
+
+  // Saved in the dosing board's EEPROM.
+  fakes::FakeClock clock;
+  DosingBench rebooted(clock, system.dosingEeprom);
+  rebooted.app.begin();
+  TEST_ASSERT_EQUAL_FLOAT(1.8f, rebooted.app.params().get(dosing::kTargetFrc));
+  TEST_ASSERT_EQUAL_FLOAT(2.0f, rebooted.app.params().get(dosing::kFlowMeterSize));
+}
+
+void test_system_pump_calibration_from_main_board() {
+  SystemBench system;
+  system.begin();
+  system.run(2 * kSecond);
+  system.command("dosing pumpcal done 10");  // no run yet
+  TEST_ASSERT_TRUE(system.main.serial.contains("error - run dosing pumpcal <revs> first"));
+
+  const uint32_t steps = system.dosing.pump.executedSteps();  // no flow: the pump is idle
+  system.command("dosing pumpcal 2");
+  TEST_ASSERT_TRUE(system.main.serial.contains("dosing pump running"));
+  system.run(10 * kSecond);  // 2 revs x 6400 steps at 3200 steps/s = 4 s
+  TEST_ASSERT_EQUAL_UINT32(2 * 6400, system.dosing.pump.executedSteps() - steps);
+  TEST_ASSERT_TRUE(system.main.serial.contains("dosing pump run finished - measure the volume"));
+
+  system.command("dosing pumpcal done 7.3");
+  TEST_ASSERT_TRUE(system.main.serial.contains("ok - ml_per_rev = 3.6500 (saved on the dosing board)"));
+  TEST_ASSERT_EQUAL_FLOAT(3.65f, system.dosing.app.params().get(dosing::kPumpMlPerRev));
+}
+
+void test_system_flowmeter_bucket_test_from_main_board() {
+  SystemBench system;
+  system.begin();
+  system.run(2 * kSecond);
+  system.command("dosing flowcal start");
+  TEST_ASSERT_TRUE(system.main.serial.contains("counting pulses"));
+  system.dosing.flow.setFrequency(50.0);  // 100 L/min with k = 0.5
+  system.run(2 * kMinute);                // 200 L, 6000 pulses
+  system.dosing.flow.setFrequency(0.0);
+  system.run(2 * kSecond);
+  system.command("dosing flowcal done 200");
+  TEST_ASSERT_TRUE(system.main.serial.contains("ok - 6000 pulses, flow_k = 0.5000"));
+  TEST_ASSERT_EQUAL_FLOAT(1.0f, system.dosing.app.params().get(dosing::kFlowCorrGain));
+}
+
+void test_system_lost_reply_is_recovered_without_executing_twice() {
+  SystemBench system;
+  system.begin();
+  system.run(2 * kSecond);
+  system.link.dropReplies = 1;
+  system.command("dosing dose 5");
+  TEST_ASSERT_TRUE(system.main.serial.contains("dosing... (dosing stop aborts)"));
+  TEST_ASSERT_EQUAL_UINT32(1, system.dosing.app.commandCount());  // re-sent, executed once
+  TEST_ASSERT_GREATER_THAN_INT(1, system.link.commandsSent);
+  system.run(10 * kSecond);
+  TEST_ASSERT_FLOAT_WITHIN(0.01, 5.0, system.dosing.pumpedMl());
+  TEST_ASSERT_TRUE(system.main.serial.contains("dosing pump run finished, automatic dosing resumed"));
+}
+
+void test_dosing_runs_same_command_again_after_main_board_reboot() {
+  fakes::FakeClock clock;
+  fakes::FakeEeprom eeprom;
+  DosingBench bench(clock, eeprom);
+  bench.app.begin();
+  link::CommandFrame c;
+  c.sequence = 1;  // a rebooted main board starts again at 1
+  c.command = link::kCmdDose;
+  c.index = 0;
+  c.value = 1.0f;
+  uint8_t frame[link::kCommandFrameSize];
+  link::encodeCommand(c, frame);
+  bench.sink.receive(frame, sizeof(frame));
+  bench.run(100);
+  bench.sink.receive(frame, sizeof(frame));  // re-send: not executed again
+  bench.run(100);
+  TEST_ASSERT_EQUAL_UINT32(1, bench.app.commandCount());
+  bench.run(5 * kSecond);
+  bench.sink.receive(frame, sizeof(frame));  // same bytes, but later: a new command
+  bench.run(100);
+  TEST_ASSERT_EQUAL_UINT32(2, bench.app.commandCount());
+}
+
+void test_system_dosing_command_without_dosing_board() {
+  SystemBench system;
+  system.begin();
+  system.link.connected = false;
+  system.command("dosing set target_frc 1.2");
+  TEST_ASSERT_TRUE(system.main.serial.contains("error - the dosing board did not answer"));
+  // The main board kept running and the next command works once the link is back.
+  system.link.connected = true;
+  system.run(2 * kSecond);
+  system.command("dosing get target_frc");
+  TEST_ASSERT_TRUE(system.main.serial.contains("target_frc = 1.50 mg/L"));
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_dosing_constant_flow_for_one_hour_is_accurate);
@@ -899,6 +1076,13 @@ int main() {
   RUN_TEST(test_mainboard_console_changes_production_time);
   RUN_TEST(test_mainboard_shows_link_loss);
   RUN_TEST(test_system_telemetry_reaches_display_and_ecophi);
+  RUN_TEST(test_dosing_executes_link_commands);
+  RUN_TEST(test_system_set_dosing_parameter_from_main_board);
+  RUN_TEST(test_system_pump_calibration_from_main_board);
+  RUN_TEST(test_system_flowmeter_bucket_test_from_main_board);
+  RUN_TEST(test_system_lost_reply_is_recovered_without_executing_twice);
+  RUN_TEST(test_dosing_runs_same_command_again_after_main_board_reboot);
+  RUN_TEST(test_system_dosing_command_without_dosing_board);
   RUN_TEST(test_system_level3_low_stops_dosing_and_shows_alarm);
   RUN_TEST(test_system_rejects_corrupted_i2c_frames);
   RUN_TEST(test_system_link_diagnostics);

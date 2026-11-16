@@ -43,6 +43,8 @@ MainboardApp::MainboardApp(const Clock& clock, MainboardIo& io, DosingLinkPort& 
       lastLinkOkMs_(0),
       everLinked_(false),
       bootMs_(0),
+      lastReplyPollMs_(0),
+      remote_(link),
       status_() {}
 
 void MainboardApp::begin() {
@@ -141,6 +143,12 @@ void MainboardApp::update() {
   }
   if (sensorTimer_.poll(nowMs)) sampleSensors(nowMs);
   if (linkTimer_.poll(nowMs)) pollDosingBoard(nowMs);
+  // A dosing command is in flight: look for its reply more often.
+  if (remote_.waiting() && nowMs - lastReplyPollMs_ >= kCommandPollMs) {
+    lastReplyPollMs_ = nowMs;
+    pollDosingBoard(nowMs);
+  }
+  remote_.update(nowMs);
 
   CycleInputs inputs;
   inputs.productionBottleFull = status_.levels[0];
@@ -175,6 +183,18 @@ void MainboardApp::pollDosingBoard(uint32_t nowMs) {
   uint8_t frame[link::kTelemetryFrameSize + 4];
   const uint8_t received = link_.requestFrame(frame, sizeof(frame));
   status_.lastLinkBytes = received;
+  if (received > 0 && link::isReplyFrame(frame, received)) {
+    // The answer to a calibration command, served once instead of telemetry.
+    link::CommandReply reply;
+    if (link::decodeReply(frame, received, reply) == link::kDecodeOk) {
+      remote_.onReply(reply);
+      lastLinkOkMs_ = nowMs;
+    } else {
+      ++status_.linkErrors;  // the command is re-sent and the reply served again
+    }
+    status_.linkOk = everLinked_ && nowMs - lastLinkOkMs_ < kLinkTimeoutMs;
+    return;
+  }
   link::DosingTelemetry telemetry;
   status_.lastLinkResult = received > 0 ? link::decodeTelemetry(frame, received, telemetry) : link::kDecodeBadLength;
   if (received > 0 && status_.lastLinkResult == link::kDecodeOk) {

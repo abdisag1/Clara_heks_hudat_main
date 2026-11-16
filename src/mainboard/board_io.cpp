@@ -54,6 +54,12 @@ uint8_t I2cDosingLink::requestFrame(uint8_t* buffer, uint8_t capacity) {
   return received == 0 ? 0 : count;
 }
 
+bool I2cDosingLink::sendCommand(const uint8_t* frame, uint8_t length) {
+  Wire.beginTransmission(clara::link::kDosingBoardAddress);
+  Wire.write(frame, length);
+  return Wire.endTransmission() == 0;  // 0 = every byte acknowledged
+}
+
 bool I2cDosingLink::probe(uint8_t address) {
   Wire.beginTransmission(address);
   return Wire.endTransmission() == 0;  // 0 = address acknowledged

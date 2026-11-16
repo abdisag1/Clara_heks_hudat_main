@@ -142,7 +142,7 @@ pio test -e native
 |---|---|---|
 | Timing | re-configured hardware timers, 59-second minutes | crystal-accurate `millis()` timing |
 | Pump steps | busy loop in `loop()`, slowed by other work | Timer1 interrupt; exact step count |
-| Dosing calibration | sent from main board over I2C, but the frame was always rejected, so hard-coded values were used | stored in the dosing board's EEPROM, set from its USB console |
+| Dosing calibration | sent from main board over I2C, but the frame was always rejected, so hard-coded values were used | stored in the dosing board's EEPROM, set from its USB console or from the main board console (`dosing set ...`, `dosing pumpcal ...`) |
 | Production time | always 180 min (EEPROM value never loaded) | `production_min` parameter |
 | Power cut during production | batch restarted | batch resumes from the last 30-min checkpoint (`checkpoint_min`); `cancel` abandons it, `resume_batch 0` disables resuming |
 | Storage tank full after settling | shown as "Settling" indefinitely | explicit "Tank full" state, transfer starts when there is space |
@@ -158,7 +158,10 @@ pio test -e native
 ## Protocols
 
 * **Main ↔ dosing board (I2C, address 0x21):** the main board requests a 28-byte
-  telemetry frame every second (versioned, CRC-8). See
+  telemetry frame every second (versioned, CRC-8). Since v3.1 it can also write
+  9-byte command frames (get / set a dosing parameter, pump and flowmeter
+  calibration, ...); the dosing board serves the reply instead of the next telemetry
+  frame. Repeated commands (lost reply) are answered again but executed once. See
   [`lib/clara_common/src/clara/dosing_link.h`](lib/clara_common/src/clara/dosing_link.h).
 * **Main board → Ecophi (RS485, `report_baud`, default 115200 baud):**
   `;flow,voltage,L1,L2,L3,naclo,frc,active_cl,ph:`, unchanged from v2.2. See

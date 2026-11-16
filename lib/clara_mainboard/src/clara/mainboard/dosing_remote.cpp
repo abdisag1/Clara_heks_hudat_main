@@ -1,0 +1,45 @@
+#include "clara/mainboard/dosing_remote.h"
+
+namespace clara {
+namespace mainboard {
+
+DosingRemote::DosingRemote(DosingLinkPort& port)
+    : port_(port), state_(kIdle), command_(), reply_(), nextSequence_(1), startMs_(0), sentMs_(0) {}
+
+bool DosingRemote::start(uint8_t command, uint8_t index, float value, uint32_t nowMs) {
+  if (state_ != kIdle) return false;
+  command_.sequence = nextSequence_;
+  command_.command = command;
+  command_.index = index;
+  command_.value = value;
+  nextSequence_ = static_cast<uint8_t>(nextSequence_ == 255 ? 1 : nextSequence_ + 1);  // never 0
+  state_ = kWaiting;
+  startMs_ = nowMs;
+  transmit(nowMs);
+  return true;
+}
+
+void DosingRemote::transmit(uint32_t nowMs) {
+  uint8_t frame[link::kCommandFrameSize];
+  link::encodeCommand(command_, frame);
+  port_.sendCommand(frame, sizeof(frame));  // a NACK is retried like a lost reply
+  sentMs_ = nowMs;
+}
+
+void DosingRemote::onReply(const link::CommandReply& reply) {
+  if (state_ != kWaiting || reply.sequence != command_.sequence || reply.command != command_.command) return;
+  reply_ = reply;
+  state_ = kAnswered;
+}
+
+void DosingRemote::update(uint32_t nowMs) {
+  if (state_ != kWaiting) return;
+  if (nowMs - startMs_ >= kCommandTimeoutMs) {
+    state_ = kNoAnswer;
+  } else if (nowMs - sentMs_ >= kCommandResendMs) {
+    transmit(nowMs);
+  }
+}
+
+}  // namespace mainboard
+}  // namespace clara

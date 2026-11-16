@@ -30,7 +30,7 @@ class MainboardIo {
   ~MainboardIo() {}
 };
 
-/** Transport of telemetry frames from the dosing board (I2C master on target). */
+/** I2C master side of the dosing-board link (see clara/dosing_link.h). */
 class DosingLinkPort {
  public:
   /**
@@ -38,6 +38,16 @@ class DosingLinkPort {
    * (0 if the dosing board did not answer).
    */
   virtual uint8_t requestFrame(uint8_t* buffer, uint8_t capacity) = 0;
+
+  /**
+   * Writes a command frame to the dosing board.
+   * @return true if the dosing board acknowledged it.
+   */
+  virtual bool sendCommand(const uint8_t* frame, uint8_t length) {
+    (void)frame;
+    (void)length;
+    return false;
+  }
 
   /**
    * Diagnostics: true if a device acknowledges @p address on the bus. Used by

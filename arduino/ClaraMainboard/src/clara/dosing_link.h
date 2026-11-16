@@ -3,6 +3,8 @@
  * @file dosing_link.h
  * @brief I2C protocol between the main board (master) and the dosing board (slave).
  *
+ * Telemetry (slave -> master)
+ * ---------------------------
  * The main board polls the dosing board once per second with
  * Wire.requestFrom(kDosingBoardAddress, kTelemetryFrameSize). The dosing board
  * answers with one telemetry frame:
@@ -20,11 +22,45 @@
  * | 23     | 4    | uptimeS            | uint32, dosing board uptime, s                   |
  * | 27     | 1    | CRC-8 of bytes 0..26                                                   |
  *
- * All multi-byte fields are little endian. 28 bytes fit the 32-byte AVR Wire
- * buffer. The dosing board owns all dosing calibration (in its own EEPROM, set
- * from its own USB console), so no data flows from master to slave. v2.2 tried
- * to send the calibration from the main board, but the frame length never
- * matched what the slave accepted, so it was silently ignored.
+ * Commands (master -> slave), protocol v3.1
+ * -----------------------------------------
+ * The dosing calibration lives in the dosing board's EEPROM. It can be changed
+ * on the dosing board's own USB console, or from the main board, which sends
+ * one command frame with Wire.beginTransmission/write/endTransmission:
+ *
+ * | offset | size | field                                          |
+ * |--------|------|------------------------------------------------|
+ * | 0      | 1    | kCommandMarker                                 |
+ * | 1      | 1    | sequence, 1..255 (0 is never used)             |
+ * | 2      | 1    | command, see Command                           |
+ * | 3      | 1    | index: parameter number / flowmeter size / on  |
+ * | 4      | 4    | value, float                                   |
+ * | 8      | 1    | CRC-8 of bytes 0..7                            |
+ *
+ * The dosing board executes the command in its main loop and serves the reply
+ * instead of telemetry on the next request (same 28-byte size, so the master
+ * reads every frame the same way and tells them apart by the first byte):
+ *
+ * | offset | size | field                                          |
+ * |--------|------|------------------------------------------------|
+ * | 0      | 1    | kReplyMarker                                   |
+ * | 1      | 1    | sequence of the command answered               |
+ * | 2      | 1    | command answered                               |
+ * | 3      | 1    | result, see CommandResult                      |
+ * | 4      | 1    | index                                          |
+ * | 5      | 4    | value, float (e.g. the value now stored)       |
+ * | 9      | 4    | extra, uint32 (parameter count, pulses, ...)   |
+ * | 13     | 14   | zero                                           |
+ * | 27     | 1    | CRC-8 of bytes 0..26                           |
+ *
+ * A command repeated with the same sequence number (the master did not get
+ * the reply) is answered again without being executed twice. Dosing boards
+ * that support commands set kFlagCommands in their telemetry; older v3.0
+ * firmware drains and ignores command frames.
+ *
+ * All multi-byte fields are little endian; every frame fits the 32-byte AVR
+ * Wire buffer. (v2.2 tried to send the calibration from the main board, but the
+ * frame length never matched what the slave accepted, so it was ignored.)
  */
 #ifndef CLARA_DOSING_LINK_H
 #define CLARA_DOSING_LINK_H
@@ -37,6 +73,10 @@ namespace link {
 const uint8_t kDosingBoardAddress = 0x21;
 const uint8_t kProtocolVersion = 3;
 const uint8_t kTelemetryFrameSize = 28;
+const uint8_t kReplyFrameSize = kTelemetryFrameSize;
+const uint8_t kCommandFrameSize = 9;
+const uint8_t kCommandMarker = 0xC5;
+const uint8_t kReplyMarker = 0xC6;
 
 /** Bits of DosingTelemetry::flags. */
 enum StatusFlag {
@@ -46,6 +86,8 @@ enum StatusFlag {
   kFlagConfigDefaults = 1u << 3,     ///< Calibration not found in EEPROM, factory defaults in use.
   kFlagFlowSimulated = 1u << 4,      ///< Bench-test flow simulation is active.
   kFlagManualMode = 1u << 5,         ///< A manual pump test/calibration is running.
+  kFlagCommands = 1u << 6,           ///< Accepts command frames (calibration from the main board).
+  kFlagFlowCalibration = 1u << 7,    ///< A flowmeter bucket test is counting pulses.
 };
 
 struct DosingTelemetry {
@@ -57,6 +99,49 @@ struct DosingTelemetry {
   uint32_t totalNaclOMicroL;
   float targetFrcMgL;
   uint32_t uptimeS;
+};
+
+/**
+ * Commands the main board can send. Each one does exactly what the dosing
+ * console command of the same name does. Never renumber: append new ones.
+ */
+enum Command {
+  kCmdGetParam = 1,       ///< index = parameter. Reply: value, extra = parameter count.
+  kCmdSetParam = 2,       ///< index = parameter, value. Saved to EEPROM. Reply: stored value.
+  kCmdDefaults = 3,       ///< Restore the factory calibration.
+  kCmdDose = 4,           ///< value = mL to pump (test / priming).
+  kCmdStop = 5,           ///< Stop the pump, back to automatic dosing.
+  kCmdPumpCalStart = 6,   ///< value = revolutions to run.
+  kCmdPumpCalDone = 7,    ///< value = measured mL. Reply: value = new ml_per_rev.
+  kCmdFlowCalStart = 8,   ///< Start counting flowmeter pulses.
+  kCmdFlowCalDone = 9,    ///< value = collected litres. Reply: value = flow_k, extra = pulses.
+  kCmdFlowCalCancel = 10,
+  kCmdSelectMeter = 11,   ///< index = 2 / 3 (inch) or 0 (other), value = k override (0 = datasheet).
+  kCmdFlowSim = 12,       ///< index = 1 on / 0 off, value = simulated L/min (not saved).
+};
+
+enum CommandResult {
+  kResultOk = 0,
+  kResultUnknownCommand,
+  kResultBadIndex,      ///< No such parameter / flowmeter size.
+  kResultOutOfRange,    ///< Value outside the allowed range; nothing changed.
+  kResultNotReady,      ///< Precondition missing, e.g. "pumpcal done" before a pump run.
+};
+
+struct CommandFrame {
+  uint8_t sequence;
+  uint8_t command;
+  uint8_t index;
+  float value;
+};
+
+struct CommandReply {
+  uint8_t sequence;
+  uint8_t command;
+  uint8_t result;
+  uint8_t index;
+  float value;
+  uint32_t extra;
 };
 
 enum DecodeResult {
@@ -71,6 +156,18 @@ void encodeTelemetry(const DosingTelemetry& telemetry, uint8_t* frame);
 
 /** Parses and validates a received frame. @p out is only written on success. */
 DecodeResult decodeTelemetry(const uint8_t* frame, uint8_t length, DosingTelemetry& out);
+
+/** Serialises a command into @p frame (kCommandFrameSize bytes). */
+void encodeCommand(const CommandFrame& command, uint8_t* frame);
+/** @return true if @p frame is a complete command frame with a valid CRC. */
+bool decodeCommand(const uint8_t* frame, uint8_t length, CommandFrame& out);
+
+/** Serialises a reply into @p frame (kReplyFrameSize bytes). */
+void encodeReply(const CommandReply& reply, uint8_t* frame);
+/** True if the frame starts like a reply (it may still be corrupt). */
+inline bool isReplyFrame(const uint8_t* frame, uint8_t length) { return length > 0 && frame[0] == kReplyMarker; }
+/** Validates a reply frame. @p out is only written on success. */
+DecodeResult decodeReply(const uint8_t* frame, uint8_t length, CommandReply& out);
 
 }  // namespace link
 }  // namespace clara

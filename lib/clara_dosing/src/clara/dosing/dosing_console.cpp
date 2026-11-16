@@ -23,7 +23,7 @@ DosingConsole::DosingConsole(DosingApp& app, TextOutput& out)
       lastMode_(kModeAutomatic) {}
 
 void DosingConsole::printBanner() {
-  out_.printLineFlash(CLARA_F("Clara dosing board v3.0 - type 'help'"));
+  out_.printLineFlash(CLARA_F("Clara dosing board v3.1 - type 'help'"));
   const ParamPersistence::LoadResult load = app_.status().calibrationLoad;
   if (load == ParamPersistence::kLoadRepaired) {
     out_.printLineFlash(CLARA_F("warning: some calibration values were invalid and reset to defaults"));

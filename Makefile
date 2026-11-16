@@ -14,6 +14,7 @@ UNITY_DIR ?= .deps/Unity
 BUILD_DIR ?= build/test
 
 LIB_SRC := $(wildcard lib/clara_common/src/clara/*.cpp) \
+           $(wildcard lib/clara_common/src/clara/dosing/*.cpp) \
            $(wildcard lib/clara_dosing/src/clara/dosing/*.cpp) \
            $(wildcard lib/clara_mainboard/src/clara/mainboard/*.cpp)
 INCLUDES := -Ilib/clara_common/src -Ilib/clara_dosing/src -Ilib/clara_mainboard/src -I$(UNITY_DIR)/src

@@ -92,4 +92,5 @@ void loop() {
   while (Serial.available() > 0) gConsole.onChar(static_cast<char>(Serial.read()));
   applySerialBaudRate();
   gApp.update();
+  gConsole.update();  // prints the answers of "dosing ..." commands
 }

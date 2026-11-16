@@ -28,6 +28,7 @@ class BoardIo : public clara::mainboard::MainboardIo {
 class I2cDosingLink : public clara::mainboard::DosingLinkPort {
  public:
   uint8_t requestFrame(uint8_t* buffer, uint8_t capacity) override;
+  bool sendCommand(const uint8_t* frame, uint8_t length) override;
   bool probe(uint8_t address) override;
 };
 

@@ -9,6 +9,8 @@
 #ifndef CLARA_MAINBOARD_CONSOLE_H
 #define CLARA_MAINBOARD_CONSOLE_H
 
+#include "clara/dosing/dosing_params.h"
+#include "clara/dosing_link.h"
 #include "clara/line_reader.h"
 #include "clara/mainboard/mainboard_app.h"
 #include "clara/param_console.h"
@@ -34,8 +36,21 @@ class MainboardConsole {
 
   void onChar(char c);
   void printBanner();
+  /** Sends queued dosing-board commands and prints their answers; call from loop(). */
+  void update();
+  /** True while "dosing ..." commands are still being sent or answered. */
+  bool dosingBusy() const { return queueLength_ > 0 || app_.dosingRemote().state() != DosingRemote::kIdle; }
 
  private:
+  // --- "dosing ..." commands: calibrate the dosing board through the I2C link
+  static const uint8_t kQueueCapacity = dosing::kParamCount + 2;
+  void handleDosing(char** tokens, uint8_t count);
+  bool queue(uint8_t command, uint8_t index = 0, float value = 0.0f);
+  void queueParamListing(uint8_t first, uint8_t last);
+  void printReply(const link::CommandReply& reply);
+  void printDosingParam(uint8_t index, float value);
+  void printDosingHelp();
+
   void execute(char* line);
   void printHelp();
   void printStatus();
@@ -47,6 +62,17 @@ class MainboardConsole {
   TextOutput& out_;
   LineReader reader_;
   ParamConsole paramConsole_;
+
+  // Local copy of the dosing parameter table (names, units, limits); values
+  // are filled from the replies.
+  float dosingValues_[dosing::kParamCount];
+  ParamStore dosingParams_;
+  ParamConsole dosingParamConsole_;
+  link::CommandFrame queue_[kQueueCapacity];
+  uint8_t queueLength_;
+  bool watchPumpRun_;
+  bool pumpRunSeen_;
+  bool pumpCalRun_;
 };
 
 }  // namespace mainboard

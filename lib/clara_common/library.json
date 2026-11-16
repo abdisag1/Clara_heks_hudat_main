@@ -1,6 +1,6 @@
 {
   "name": "clara_common",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "Hardware-independent building blocks shared by both Clara boards: timing, persistence, parameter tables, text formatting and the inter-board protocol.",
   "frameworks": "*",
   "platforms": "*",

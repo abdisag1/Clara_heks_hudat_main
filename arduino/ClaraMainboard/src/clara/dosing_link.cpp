@@ -37,5 +37,49 @@ DecodeResult decodeTelemetry(const uint8_t* frame, uint8_t length, DosingTelemet
   return kDecodeOk;
 }
 
+void encodeCommand(const CommandFrame& command, uint8_t* frame) {
+  frame[0] = kCommandMarker;
+  frame[1] = command.sequence;
+  frame[2] = command.command;
+  frame[3] = command.index;
+  putF32(frame + 4, command.value);
+  frame[8] = crc8(frame, kCommandFrameSize - 1u);
+}
+
+bool decodeCommand(const uint8_t* frame, uint8_t length, CommandFrame& out) {
+  if (length != kCommandFrameSize || frame[0] != kCommandMarker) return false;
+  if (crc8(frame, kCommandFrameSize - 1u) != frame[8]) return false;
+  out.sequence = frame[1];
+  out.command = frame[2];
+  out.index = frame[3];
+  out.value = getF32(frame + 4);
+  return true;
+}
+
+void encodeReply(const CommandReply& reply, uint8_t* frame) {
+  for (uint8_t i = 0; i < kReplyFrameSize; ++i) frame[i] = 0;
+  frame[0] = kReplyMarker;
+  frame[1] = reply.sequence;
+  frame[2] = reply.command;
+  frame[3] = reply.result;
+  frame[4] = reply.index;
+  putF32(frame + 5, reply.value);
+  putU32(frame + 9, reply.extra);
+  frame[kReplyFrameSize - 1] = crc8(frame, kReplyFrameSize - 1u);
+}
+
+DecodeResult decodeReply(const uint8_t* frame, uint8_t length, CommandReply& out) {
+  if (length != kReplyFrameSize) return kDecodeBadLength;
+  if (crc8(frame, kReplyFrameSize - 1u) != frame[kReplyFrameSize - 1]) return kDecodeBadCrc;
+  if (frame[0] != kReplyMarker) return kDecodeBadVersion;
+  out.sequence = frame[1];
+  out.command = frame[2];
+  out.result = frame[3];
+  out.index = frame[4];
+  out.value = getF32(frame + 5);
+  out.extra = getU32(frame + 9);
+  return kDecodeOk;
+}
+
 }  // namespace link
 }  // namespace clara

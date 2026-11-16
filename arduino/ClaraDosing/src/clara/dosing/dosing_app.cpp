@@ -20,6 +20,10 @@ DosingApp::DosingApp(const Clock& clock, FlowSensor& flowSensor, PumpDriver& pum
       executedStepsSeen_(0),
       flowCalibrationStartCount_(0),
       telemetrySequence_(0),
+      lastCommandFrame_(),
+      lastCommandMs_(0),
+      lastReplyFrame_(),
+      commandCount_(0),
       status_() {}
 
 void DosingApp::begin() {
@@ -56,8 +60,25 @@ void DosingApp::saveAndApplyParams() {
   applyParams();
 }
 
+SetResult DosingApp::setParameter(uint8_t index, float value) {
+  if (index >= params_.count()) return kSetUnknownParameter;
+  if (index == kFlowMeterSize && (value == 2.0f || value == 3.0f)) {
+    return selectFlowMeter(static_cast<uint8_t>(value)) ? kSetOk : kSetOutOfRange;
+  }
+  const SetResult result = params_.set(index, value);
+  if (result == kSetOk) saveAndApplyParams();
+  return result;
+}
+
+void DosingApp::restoreDefaults() {
+  params_.resetToDefaults();
+  saveAndApplyParams();
+}
+
 void DosingApp::update() {
   const uint32_t nowMs = clock_.millis();
+
+  serviceCommands();
 
   if (flowTimer_.poll(nowMs)) {
     sampleFlow(nowMs);
@@ -135,6 +156,8 @@ void DosingApp::publishTelemetry(uint32_t nowMs) {
   if (status_.calibrationLoad != ParamPersistence::kLoadOk) telemetry.flags |= link::kFlagConfigDefaults;
   if (status_.flowSimulated) telemetry.flags |= link::kFlagFlowSimulated;
   if (status_.mode != kModeAutomatic) telemetry.flags |= link::kFlagManualMode;
+  if (status_.flowCalibrationActive) telemetry.flags |= link::kFlagFlowCalibration;
+  telemetry.flags |= link::kFlagCommands;
   telemetry.flowLpm = status_.flowLpm;
   telemetry.lastDoseMl = status_.lastDecision.doseMl;
   telemetry.totalWaterL = totalWater_.wholeLiters();
@@ -222,6 +245,114 @@ bool DosingApp::finishFlowCalibration(float liters, float& kFactor, uint32_t& pu
   status_.flowCalibrationActive = false;
   saveAndApplyParams();
   return true;
+}
+
+void DosingApp::serviceCommands() {
+  uint8_t frame[link::kCommandFrameSize + 1];
+  const uint8_t length = telemetry_.takeCommand(frame, sizeof(frame));
+  link::CommandFrame command;
+  if (length == 0 || !link::decodeCommand(frame, length, command)) return;  // nothing, or noise: no reply
+  // The same frame again, shortly after: the master missed the reply. Serve
+  // the same reply again without executing twice (e.g. a second pump run).
+  const uint32_t nowMs = clock_.millis();
+  bool repeat = nowMs - lastCommandMs_ < kCommandRepeatWindowMs;
+  for (uint8_t i = 0; i < link::kCommandFrameSize && repeat; ++i) repeat = frame[i] == lastCommandFrame_[i];
+  if (!repeat) {
+    const link::CommandReply reply = execute(command);
+    link::encodeReply(reply, lastReplyFrame_);
+    for (uint8_t i = 0; i < link::kCommandFrameSize; ++i) lastCommandFrame_[i] = frame[i];
+    ++commandCount_;
+  }
+  lastCommandMs_ = nowMs;
+  telemetry_.publishReply(lastReplyFrame_, sizeof(lastReplyFrame_));
+}
+
+link::CommandReply DosingApp::execute(const link::CommandFrame& command) {
+  link::CommandReply reply;
+  reply.sequence = command.sequence;
+  reply.command = command.command;
+  reply.result = link::kResultOk;
+  reply.index = command.index;
+  reply.value = 0.0f;
+  reply.extra = 0;
+
+  switch (command.command) {
+    case link::kCmdGetParam:
+      if (command.index >= params_.count()) {
+        reply.result = link::kResultBadIndex;
+      } else {
+        reply.value = params_.get(command.index);
+      }
+      reply.extra = params_.count();
+      break;
+    case link::kCmdSetParam: {
+      const SetResult result = setParameter(command.index, command.value);
+      reply.result = result == kSetOk ? link::kResultOk
+                                      : (result == kSetUnknownParameter ? link::kResultBadIndex : link::kResultOutOfRange);
+      reply.value = params_.get(command.index);
+      break;
+    }
+    case link::kCmdDefaults:
+      restoreDefaults();
+      break;
+    case link::kCmdDose:
+      if (!dispense(command.value)) reply.result = link::kResultOutOfRange;
+      break;
+    case link::kCmdStop:
+      stopPump();
+      break;
+    case link::kCmdPumpCalStart:
+      if (!startPumpCalibration(command.value)) reply.result = link::kResultOutOfRange;
+      break;
+    case link::kCmdPumpCalDone: {
+      float mlPerRev = 0.0f;
+      if (finishPumpCalibration(command.value, mlPerRev)) {
+        reply.value = mlPerRev;
+      } else {
+        reply.result = link::kResultNotReady;
+      }
+      break;
+    }
+    case link::kCmdFlowCalStart:
+      startFlowCalibration();
+      break;
+    case link::kCmdFlowCalDone: {
+      float kFactor = 0.0f;
+      uint32_t pulses = 0;
+      if (finishFlowCalibration(command.value, kFactor, pulses)) {
+        reply.value = kFactor;
+        reply.extra = pulses;
+      } else {
+        reply.result = link::kResultNotReady;
+      }
+      break;
+    }
+    case link::kCmdFlowCalCancel:
+      cancelFlowCalibration();
+      break;
+    case link::kCmdSelectMeter:
+      if (command.index == 0) {
+        params_.set(kFlowMeterSize, 0.0f);  // label only: keep the current calibration
+        saveAndApplyParams();
+      } else if (findFlowMeterPreset(command.index) == 0) {
+        reply.result = link::kResultBadIndex;
+      } else if (!selectFlowMeter(command.index, command.value)) {
+        reply.result = link::kResultOutOfRange;
+      }
+      reply.value = params_.get(kFlowKFactor);
+      break;
+    case link::kCmdFlowSim:
+      if (command.index != 0 && !(command.value >= 0.0f)) {
+        reply.result = link::kResultOutOfRange;
+      } else {
+        setFlowSimulation(command.index != 0, command.value);
+      }
+      break;
+    default:
+      reply.result = link::kResultUnknownCommand;
+      break;
+  }
+  return reply;
 }
 
 }  // namespace dosing

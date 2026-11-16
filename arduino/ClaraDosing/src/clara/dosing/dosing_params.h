@@ -4,7 +4,12 @@
  * @brief Calibration parameters of the dosing board.
  *
  * All values are stored in the dosing board's EEPROM and can be changed from
- * its USB serial console (`set <name> <value>`), see docs/CALIBRATION.md.
+ * its USB serial console (`set <name> <value>`) or from the main board
+ * (`dosing set <name> <value>`), see docs/CALIBRATION.md.
+ *
+ * The table lives in clara_common because both boards need it: the parameter
+ * numbers are part of the I2C protocol (link::kCmdSetParam), and the main board
+ * uses the names, units and limits to show and pre-check dosing parameters.
  */
 #ifndef CLARA_DOSING_PARAMS_H
 #define CLARA_DOSING_PARAMS_H

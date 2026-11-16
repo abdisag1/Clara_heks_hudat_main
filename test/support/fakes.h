@@ -19,6 +19,7 @@
 #include "clara/clock.h"
 #include "clara/digital_io.h"
 #include "clara/dosing/dosing_hal.h"
+#include "clara/dosing_link.h"
 #include "clara/eeprom_store.h"
 #include "clara/mainboard/display_pages.h"
 #include "clara/mainboard/mainboard_hal.h"
@@ -177,39 +178,85 @@ class FakePump : public clara::dosing::PumpDriver {
   uint32_t maxRateSeen_;
 };
 
-/** Stores the latest published telemetry frame (what the I2C slave would serve). */
+/**
+ * The dosing board's I2C slave, like src/dosing/telemetry_slave.cpp: stores the
+ * latest telemetry frame, keeps a received command for the main loop, and
+ * serves a command reply once on the next request.
+ */
 class FakeTelemetrySink : public clara::dosing::TelemetrySink {
  public:
   void publish(const uint8_t* frame, uint8_t length) override {
     frame_.assign(frame, frame + length);
     ++publishCount;
   }
+  uint8_t takeCommand(uint8_t* frame, uint8_t capacity) override {
+    const uint8_t n = static_cast<uint8_t>(command_.size());
+    if (n == 0 || n > capacity) return 0;
+    memcpy(frame, command_.data(), n);
+    command_.clear();
+    return n;
+  }
+  void publishReply(const uint8_t* frame, uint8_t length) override { reply_.assign(frame, frame + length); }
+
+  /** Bus side: the master wrote @p frame (the AVR slave keeps command frames only). */
+  void receive(const uint8_t* frame, uint8_t length) {
+    if (length == clara::link::kCommandFrameSize && frame[0] == clara::link::kCommandMarker) {
+      command_.assign(frame, frame + length);
+    }
+  }
+  /** Bus side: what the next request returns (the reply once, else telemetry). */
+  std::vector<uint8_t> serve() {
+    if (!reply_.empty()) {
+      std::vector<uint8_t> reply;
+      reply.swap(reply_);
+      return reply;
+    }
+    return frame_;
+  }
+
   const std::vector<uint8_t>& frame() const { return frame_; }
   int publishCount = 0;
 
  private:
   std::vector<uint8_t> frame_;
+  std::vector<uint8_t> command_;
+  std::vector<uint8_t> reply_;
 };
 
 /** I2C bus stand-in: the main board reads what the dosing board published. */
 class LoopbackLink : public clara::mainboard::DosingLinkPort {
  public:
-  explicit LoopbackLink(const FakeTelemetrySink& sink) : connected(true), corrupt(false), sink_(sink) {}
+  explicit LoopbackLink(FakeTelemetrySink& sink)
+      : connected(true), corrupt(false), dropReplies(0), commandsSent(0), sink_(sink) {}
   uint8_t requestFrame(uint8_t* buffer, uint8_t capacity) override {
-    if (!connected || sink_.frame().empty()) return 0;
-    const uint8_t n = static_cast<uint8_t>(sink_.frame().size() < capacity ? sink_.frame().size() : capacity);
-    memcpy(buffer, sink_.frame().data(), n);
+    if (!connected) return 0;
+    std::vector<uint8_t> frame = sink_.serve();
+    if (frame.empty()) return 0;
+    if (dropReplies > 0 && frame[0] == clara::link::kReplyMarker) {
+      --dropReplies;  // reply lost on the bus: corrupt it
+      frame[3] ^= 0x01;
+    }
+    const uint8_t n = static_cast<uint8_t>(frame.size() < capacity ? frame.size() : capacity);
+    memcpy(buffer, frame.data(), n);
     if (corrupt) buffer[5] ^= 0x40;
     return n;
+  }
+  bool sendCommand(const uint8_t* frame, uint8_t length) override {
+    if (!connected) return false;
+    ++commandsSent;
+    sink_.receive(frame, length);
+    return true;
   }
   bool probe(uint8_t address) override {
     return address == 0x27 || (connected && address == 0x21);  // LCD + dosing board
   }
   bool connected;
   bool corrupt;
+  int dropReplies;   ///< Corrupt this many command replies.
+  int commandsSent;
 
  private:
-  const FakeTelemetrySink& sink_;
+  FakeTelemetrySink& sink_;
 };
 
 class FakeMainboardIo : public clara::mainboard::MainboardIo {

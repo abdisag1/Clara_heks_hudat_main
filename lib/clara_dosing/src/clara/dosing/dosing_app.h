@@ -25,6 +25,14 @@ namespace dosing {
 /** EEPROM map of the dosing board. */
 const uint16_t kEepromParamsAddress = 0;
 
+/**
+ * A command frame identical to the previous one and received within this time
+ * is a re-send (the main board missed the reply): it is answered again but not
+ * executed twice. Longer than the main board's kCommandTimeoutMs; shorter than
+ * a main-board reboot, after which its sequence numbers start again at 1.
+ */
+const uint32_t kCommandRepeatWindowMs = 3000;
+
 /** Flow sampling / telemetry period. */
 const uint32_t kFlowSamplePeriodMs = 1000;
 
@@ -68,6 +76,19 @@ class DosingApp {
   ParamStore& params() { return params_; }
   /** Saves the parameters to EEPROM and applies them to the running loop. */
   void saveAndApplyParams();
+  /**
+   * Validates, stores, saves and applies one parameter. Setting flow_meter to
+   * 2 or 3 loads that meter's datasheet calibration, like "meter 2|3".
+   */
+  SetResult setParameter(uint8_t index, float value);
+  /** Restores the factory calibration and saves it. */
+  void restoreDefaults();
+
+  // --- Commands from the main board (I2C, see dosing_link.h) -----------------
+  /** Executes one command and returns the reply. Also used by the tests. */
+  link::CommandReply execute(const link::CommandFrame& command);
+  /** Commands received from the main board since start-up (diagnostics). */
+  uint32_t commandCount() const { return commandCount_; }
 
   // --- Bench tests and calibration (console commands) ------------------------
   /** Pumps @p ml of NaClO at the test speed (automatic dosing paused). */
@@ -113,6 +134,7 @@ class DosingApp {
   void sampleFlow(uint32_t nowMs);
   void accountPumpedVolume();
   void publishTelemetry(uint32_t nowMs);
+  void serviceCommands();
   bool startManualRun(Mode mode, uint32_t steps);
 
   const Clock& clock_;
@@ -136,6 +158,10 @@ class DosingApp {
   uint32_t executedStepsSeen_;
   uint32_t flowCalibrationStartCount_;
   uint8_t telemetrySequence_;
+  uint8_t lastCommandFrame_[link::kCommandFrameSize];  ///< All zero = none yet.
+  uint32_t lastCommandMs_;
+  uint8_t lastReplyFrame_[link::kReplyFrameSize];
+  uint32_t commandCount_;
   DosingStatus status_;
 };
 

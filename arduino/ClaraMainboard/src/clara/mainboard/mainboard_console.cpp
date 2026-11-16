@@ -15,11 +15,22 @@ bool is(const char* token, const char* flashText) { return clara_strcasecmp_P(to
 }  // namespace
 
 MainboardConsole::MainboardConsole(MainboardApp& app, TextOutput& out)
-    : app_(app), out_(out), reader_(), paramConsole_(app.params(), out) {}
+    : app_(app),
+      out_(out),
+      reader_(),
+      paramConsole_(app.params(), out),
+      dosingValues_(),
+      dosingParams_(dosing::parameterTable(), dosing::kParamCount, dosingValues_),
+      dosingParamConsole_(dosingParams_, out),
+      queue_(),
+      queueLength_(0),
+      watchPumpRun_(false),
+      pumpRunSeen_(false),
+      pumpCalRun_(false) {}
 
 void MainboardConsole::printBanner() {
   // No ';' in console output: the Ecophi receiver on the shared line ignores it.
-  out_.printFlash(CLARA_F("Clara main board v3.0 - type help - "));
+  out_.printFlash(CLARA_F("Clara main board v3.1 - type help - "));
   out_.printUInt(app_.serialBaudRate());
   out_.printLineFlash(CLARA_F(" baud"));
   const MainboardStatus& status = app_.status();
@@ -80,6 +91,8 @@ void MainboardConsole::execute(char* line) {
   } else if (is(tokens[0], CLARA_F("cancel"))) {
     app_.cancelBatch();
     out_.printLineFlash(CLARA_F("ok - batch cancelled, standby (will not resume after power-up)"));
+  } else if (is(tokens[0], CLARA_F("dosing"))) {
+    handleDosing(tokens, count);
   } else if (is(tokens[0], CLARA_F("report"))) {
     app_.sendReportNow();
     out_.newline();
@@ -98,7 +111,19 @@ void MainboardConsole::printHelp() {
   out_.printLineFlash(CLARA_F("  force <standby|production|settling|transfer>"));
   out_.printLineFlash(CLARA_F("                        jump to a state (bench test)"));
   out_.printLineFlash(CLARA_F("  report                send an Ecophi frame now"));
-  out_.printLineFlash(CLARA_F("Dosing calibration is done on the dosing board USB port."));
+  printDosingHelp();
+}
+
+void MainboardConsole::printDosingHelp() {
+  out_.printLineFlash(CLARA_F("Dosing board (through the I2C link, same as its own USB console)"));
+  out_.printLineFlash(CLARA_F("  dosing get [name|#]          show dosing parameters"));
+  out_.printLineFlash(CLARA_F("  dosing set <name|#> <value>  change and save on the dosing board"));
+  out_.printLineFlash(CLARA_F("  dosing defaults              restore its factory calibration"));
+  out_.printLineFlash(CLARA_F("  dosing dose <mL> | dosing stop"));
+  out_.printLineFlash(CLARA_F("  dosing pumpcal <revs>, then dosing pumpcal done <mL>"));
+  out_.printLineFlash(CLARA_F("  dosing meter [2|3 [k]]       show or select the flowmeter"));
+  out_.printLineFlash(CLARA_F("  dosing flowcal start, then dosing flowcal done <L> | cancel"));
+  out_.printLineFlash(CLARA_F("  dosing flowsim <L/min>|off   simulate flow (bench test)"));
 }
 
 void MainboardConsole::printStatus() {
@@ -151,6 +176,8 @@ void MainboardConsole::printStatus() {
       out_.printLineFlash(CLARA_F("  WARNING dosing board uses default calibration"));
     }
     if (s.dosing.flags & link::kFlagFlowSimulated) out_.printLineFlash(CLARA_F("  NOTE flow is simulated"));
+    if (s.dosing.flags & link::kFlagManualMode) out_.printLineFlash(CLARA_F("  NOTE pump test or calibration running"));
+    if (s.dosing.flags & link::kFlagFlowCalibration) out_.printLineFlash(CLARA_F("  NOTE flowmeter bucket test counting"));
   }
 }
 
@@ -220,6 +247,263 @@ void MainboardConsole::handleForce(char** tokens, uint8_t count) {
     }
   }
   out_.printLineFlash(CLARA_F("usage - force <standby|production|settling|transfer>"));
+}
+
+// --- Dosing board commands ----------------------------------------------------
+
+bool MainboardConsole::queue(uint8_t command, uint8_t index, float value) {
+  if (queueLength_ >= kQueueCapacity) return false;
+  link::CommandFrame& frame = queue_[queueLength_++];
+  frame.sequence = 0;  // assigned by DosingRemote
+  frame.command = command;
+  frame.index = index;
+  frame.value = value;
+  return true;
+}
+
+void MainboardConsole::queueParamListing(uint8_t first, uint8_t last) {
+  for (uint8_t i = first; i <= last && i < dosing::kParamCount; ++i) queue(link::kCmdGetParam, i);
+}
+
+void MainboardConsole::handleDosing(char** tokens, uint8_t count) {
+  if (count < 2 || is(tokens[1], CLARA_F("help"))) {
+    printDosingHelp();
+    return;
+  }
+  if (dosingBusy()) {
+    out_.printLineFlash(CLARA_F("busy - wait for the answer of the previous dosing command"));
+    return;
+  }
+  const MainboardStatus& s = app_.status();
+  if (s.linkOk && (s.dosing.flags & link::kFlagCommands) == 0) {
+    out_.printLineFlash(CLARA_F("error - the dosing board firmware is too old for calibration from the"));
+    out_.printLineFlash(CLARA_F("  main board - upload ClaraDosing v3.1, or use the dosing board USB port"));
+    return;
+  }
+
+  const char* sub = tokens[1];
+  float value = 0.0f;
+  bool ok = true;
+  if (is(sub, CLARA_F("get"))) {
+    if (count == 2) {
+      queueParamListing(0, dosing::kParamCount - 1);
+    } else {
+      const int16_t index = dosingParams_.find(tokens[2]);
+      if (index < 0) {
+        out_.printLineFlash(CLARA_F("error - unknown dosing parameter, type dosing get for the list"));
+        return;
+      }
+      queue(link::kCmdGetParam, static_cast<uint8_t>(index));
+    }
+  } else if (is(sub, CLARA_F("set"))) {
+    const int16_t index = count == 4 ? dosingParams_.find(tokens[2]) : -1;
+    if (count != 4) {
+      out_.printLineFlash(CLARA_F("usage - dosing set <name|#> <value>"));
+      return;
+    }
+    if (index < 0) {
+      out_.printLineFlash(CLARA_F("error - unknown dosing parameter, type dosing get for the list"));
+      return;
+    }
+    if (!parseFloat(tokens[3], value)) {
+      out_.printLineFlash(CLARA_F("error - value is not a number"));
+      return;
+    }
+    queue(link::kCmdSetParam, static_cast<uint8_t>(index), value);
+    // Selecting a flowmeter also changes its k-factor: show it.
+    if (index == dosing::kFlowMeterSize) queue(link::kCmdGetParam, dosing::kFlowKFactor);
+  } else if (is(sub, CLARA_F("defaults")) && count == 2) {
+    queue(link::kCmdDefaults);
+  } else if (is(sub, CLARA_F("stop")) && count == 2) {
+    queue(link::kCmdStop);
+  } else if (is(sub, CLARA_F("dose")) && count == 3 && parseFloat(tokens[2], value)) {
+    queue(link::kCmdDose, 0, value);
+  } else if (is(sub, CLARA_F("pumpcal")) && count == 3 && parseFloat(tokens[2], value)) {
+    queue(link::kCmdPumpCalStart, 0, value);
+  } else if (is(sub, CLARA_F("pumpcal")) && count == 4 && is(tokens[2], CLARA_F("done")) &&
+             parseFloat(tokens[3], value)) {
+    queue(link::kCmdPumpCalDone, 0, value);
+  } else if (is(sub, CLARA_F("meter"))) {
+    float kOverride = 0.0f;
+    if (count == 2) {
+      queue(link::kCmdGetParam, dosing::kFlowMeterSize);
+      queue(link::kCmdGetParam, dosing::kFlowKFactor);
+    } else if (parseFloat(tokens[2], value) && (value == 0.0f || value == 2.0f || value == 3.0f) &&
+               (count == 3 || parseFloat(tokens[3], kOverride))) {
+      queue(link::kCmdSelectMeter, static_cast<uint8_t>(value), kOverride);
+      queue(link::kCmdGetParam, dosing::kFlowMeterSize);
+      queue(link::kCmdGetParam, dosing::kFlowKFactor);
+    } else {
+      out_.printLineFlash(CLARA_F("usage - dosing meter 2 | dosing meter 3 | dosing meter 3 <k> | dosing meter 0"));
+      return;
+    }
+  } else if (is(sub, CLARA_F("flowcal")) && count == 3 && is(tokens[2], CLARA_F("start"))) {
+    queue(link::kCmdFlowCalStart);
+  } else if (is(sub, CLARA_F("flowcal")) && count == 3 && is(tokens[2], CLARA_F("cancel"))) {
+    queue(link::kCmdFlowCalCancel);
+  } else if (is(sub, CLARA_F("flowcal")) && count == 4 && is(tokens[2], CLARA_F("done")) &&
+             parseFloat(tokens[3], value)) {
+    queue(link::kCmdFlowCalDone, 0, value);
+  } else if (is(sub, CLARA_F("flowsim")) && count == 3 && is(tokens[2], CLARA_F("off"))) {
+    queue(link::kCmdFlowSim, 0, 0.0f);
+  } else if (is(sub, CLARA_F("flowsim")) && count == 3 && parseFloat(tokens[2], value)) {
+    queue(link::kCmdFlowSim, 1, value);
+  } else {
+    ok = false;
+  }
+  if (!ok) {
+    out_.printLineFlash(CLARA_F("unknown dosing command, type dosing help"));
+    return;
+  }
+  update();  // send the first command now
+}
+
+void MainboardConsole::update() {
+  DosingRemote& remote = app_.dosingRemote();
+
+  if (remote.state() == DosingRemote::kAnswered) {
+    printReply(remote.reply());
+    remote.release();
+  } else if (remote.state() == DosingRemote::kNoAnswer) {
+    remote.release();
+    queueLength_ = 0;
+    out_.printLineFlash(CLARA_F("error - the dosing board did not answer"));
+    out_.printLineFlash(CLARA_F("  check the dosing link with status and i2c; a dosing board with"));
+    out_.printLineFlash(CLARA_F("  firmware older than v3.1 cannot be calibrated from here"));
+  }
+
+  if (remote.state() == DosingRemote::kIdle && queueLength_ > 0) {
+    const link::CommandFrame next = queue_[0];
+    for (uint8_t i = 1; i < queueLength_; ++i) queue_[i - 1] = queue_[i];
+    --queueLength_;
+    remote.start(next.command, next.index, next.value, app_.now());
+  }
+
+  // Tell the operator when a pump run started from here has finished.
+  if (watchPumpRun_ && app_.status().linkOk) {
+    const bool running = (app_.status().dosing.flags & link::kFlagManualMode) != 0;
+    if (running) {
+      pumpRunSeen_ = true;
+    } else if (pumpRunSeen_) {
+      watchPumpRun_ = false;
+      out_.printLineFlash(pumpCalRun_ ? CLARA_F("dosing pump run finished - measure the volume, then dosing pumpcal done <mL>")
+                                      : CLARA_F("dosing pump run finished, automatic dosing resumed"));
+    }
+  }
+}
+
+void MainboardConsole::printDosingParam(uint8_t index, float value) {
+  if (index >= dosingParams_.count()) return;
+  dosingParams_.set(index, value);  // values come from the dosing board, already validated there
+  dosingParamConsole_.printParam(index);
+}
+
+void MainboardConsole::printReply(const link::CommandReply& reply) {
+  if (reply.result == link::kResultUnknownCommand) {
+    queueLength_ = 0;
+    out_.printLineFlash(CLARA_F("error - the dosing board firmware does not know this command, update ClaraDosing"));
+    return;
+  }
+  if (reply.result == link::kResultBadIndex) {
+    queueLength_ = 0;
+    out_.printLineFlash(reply.command == link::kCmdSelectMeter ? CLARA_F("error - use flowmeter 2, 3 or 0")
+                                                               : CLARA_F("error - the dosing board has no such parameter"));
+    return;
+  }
+  const bool ok = reply.result == link::kResultOk;
+
+  switch (reply.command) {
+    case link::kCmdGetParam:
+      printDosingParam(reply.index, reply.value);
+      break;
+    case link::kCmdSetParam:
+      if (ok) {
+        out_.printFlash(CLARA_F("ok - dosing board saved: "));
+        printDosingParam(reply.index, reply.value);
+      } else {
+        queueLength_ = 0;
+        const ParamInfo info = dosingParams_.info(reply.index);
+        out_.printFlash(CLARA_F("error - out of range, allowed "));
+        out_.printFloat(info.minValue, info.decimals);
+        out_.write(" .. ");
+        out_.printFloat(info.maxValue, info.decimals);
+        out_.newline();
+      }
+      break;
+    case link::kCmdDefaults:
+      out_.printLineFlash(CLARA_F("ok - dosing board factory calibration restored"));
+      break;
+    case link::kCmdDose:
+      if (ok) {
+        out_.printLineFlash(CLARA_F("dosing... (dosing stop aborts)"));
+        watchPumpRun_ = true;
+        pumpRunSeen_ = false;
+        pumpCalRun_ = false;
+      } else {
+        out_.printLineFlash(CLARA_F("error - volume must be 0 < mL <= 1000"));
+      }
+      break;
+    case link::kCmdStop:
+      watchPumpRun_ = false;
+      out_.printLineFlash(CLARA_F("ok - dosing pump stopped"));
+      break;
+    case link::kCmdPumpCalStart:
+      if (ok) {
+        out_.printLineFlash(CLARA_F("dosing pump running - collect the output in a measuring cylinder"));
+        watchPumpRun_ = true;
+        pumpRunSeen_ = false;
+        pumpCalRun_ = true;
+      } else {
+        out_.printLineFlash(CLARA_F("error - revolutions must be 0 < revs <= 1000"));
+      }
+      break;
+    case link::kCmdPumpCalDone:
+      if (ok) {
+        out_.printFlash(CLARA_F("ok - ml_per_rev = "));
+        out_.printFloat(reply.value, 4);
+        out_.printLineFlash(CLARA_F(" (saved on the dosing board)"));
+      } else {
+        out_.printLineFlash(CLARA_F("error - run dosing pumpcal <revs> first and wait until it finishes"));
+      }
+      break;
+    case link::kCmdFlowCalStart:
+      out_.printLineFlash(CLARA_F("counting pulses - collect at least 50 L, then dosing flowcal done <L>"));
+      break;
+    case link::kCmdFlowCalDone:
+      if (ok) {
+        out_.printFlash(CLARA_F("ok - "));
+        out_.printUInt(reply.extra);
+        out_.printFlash(CLARA_F(" pulses, flow_k = "));
+        out_.printFloat(reply.value, 4);
+        out_.printLineFlash(CLARA_F(" Hz/(L/min), correction reset to gain 1 offset 0 (saved)"));
+        if (reply.extra < 100) out_.printLineFlash(CLARA_F("warning - fewer than 100 pulses, repeat with more water"));
+      } else {
+        out_.printLineFlash(CLARA_F("error - run dosing flowcal start first; result must be in range"));
+      }
+      break;
+    case link::kCmdFlowCalCancel:
+      out_.printLineFlash(CLARA_F("flow calibration cancelled"));
+      break;
+    case link::kCmdSelectMeter:
+      if (ok) {
+        out_.printLineFlash(CLARA_F("ok - flowmeter saved on the dosing board, verify with a bucket test"));
+      } else {
+        queueLength_ = 0;
+        out_.printLineFlash(CLARA_F("error - k-factor out of range"));
+      }
+      break;
+    case link::kCmdFlowSim:
+      if (!ok) {
+        out_.printLineFlash(CLARA_F("error - flow must be 0 or more"));
+      } else if (reply.index != 0) {
+        out_.printLineFlash(CLARA_F("flow simulation on (not saved; dosing flowsim off to end)"));
+      } else {
+        out_.printLineFlash(CLARA_F("flow simulation off"));
+      }
+      break;
+    default:
+      break;
+  }
 }
 
 }  // namespace mainboard

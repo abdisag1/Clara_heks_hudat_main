@@ -411,8 +411,53 @@ void test_telemetry_rejects_bad_frames() {
   TEST_ASSERT_NOT_EQUAL(link::kDecodeOk, link::decodeTelemetry(zeros, sizeof(zeros), decoded));
 }
 
+void test_link_command_and_reply_round_trip() {
+  link::CommandFrame command;
+  command.sequence = 7;
+  command.command = link::kCmdSetParam;
+  command.index = 4;
+  command.value = 3.65f;
+  uint8_t frame[link::kCommandFrameSize];
+  link::encodeCommand(command, frame);
+  link::CommandFrame decoded;
+  TEST_ASSERT_TRUE(link::decodeCommand(frame, sizeof(frame), decoded));
+  TEST_ASSERT_EQUAL_UINT8(7, decoded.sequence);
+  TEST_ASSERT_EQUAL_UINT8(link::kCmdSetParam, decoded.command);
+  TEST_ASSERT_EQUAL_UINT8(4, decoded.index);
+  TEST_ASSERT_EQUAL_FLOAT(3.65f, decoded.value);
+  frame[5] ^= 0x10;  // corrupted on the bus
+  TEST_ASSERT_FALSE(link::decodeCommand(frame, sizeof(frame), decoded));
+  TEST_ASSERT_FALSE(link::decodeCommand(frame, sizeof(frame) - 1, decoded));
+
+  link::CommandReply reply;
+  reply.sequence = 7;
+  reply.command = link::kCmdFlowCalDone;
+  reply.result = link::kResultOk;
+  reply.index = 0;
+  reply.value = 0.5f;
+  reply.extra = 6000;
+  uint8_t replyFrame[link::kReplyFrameSize];
+  link::encodeReply(reply, replyFrame);
+  TEST_ASSERT_TRUE(link::isReplyFrame(replyFrame, sizeof(replyFrame)));
+  link::CommandReply decodedReply;
+  TEST_ASSERT_EQUAL(link::kDecodeOk, link::decodeReply(replyFrame, sizeof(replyFrame), decodedReply));
+  TEST_ASSERT_EQUAL_UINT32(6000, decodedReply.extra);
+  TEST_ASSERT_EQUAL_FLOAT(0.5f, decodedReply.value);
+  replyFrame[9] ^= 0x01;
+  TEST_ASSERT_EQUAL(link::kDecodeBadCrc, link::decodeReply(replyFrame, sizeof(replyFrame), decodedReply));
+
+  // A telemetry frame is never mistaken for a reply, and vice versa.
+  link::DosingTelemetry telemetry = link::DosingTelemetry();
+  uint8_t telemetryFrame[link::kTelemetryFrameSize];
+  link::encodeTelemetry(telemetry, telemetryFrame);
+  TEST_ASSERT_FALSE(link::isReplyFrame(telemetryFrame, sizeof(telemetryFrame)));
+  link::encodeReply(reply, replyFrame);
+  TEST_ASSERT_EQUAL(link::kDecodeBadVersion, link::decodeTelemetry(replyFrame, sizeof(replyFrame), telemetry));
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(test_link_command_and_reply_round_trip);
   RUN_TEST(test_timer_fires_once_per_period);
   RUN_TEST(test_timer_does_not_drift_with_loop_latency);
   RUN_TEST(test_timer_survives_millis_rollover);

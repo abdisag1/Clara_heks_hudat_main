@@ -13,6 +13,7 @@
 #include "clara/dosing_link.h"
 #include "clara/eeprom_store.h"
 #include "clara/mainboard/display_pages.h"
+#include "clara/mainboard/dosing_remote.h"
 #include "clara/mainboard/ecophi_report.h"
 #include "clara/mainboard/main_params.h"
 #include "clara/mainboard/mainboard_hal.h"
@@ -94,6 +95,8 @@ class MainboardApp {
   const ProductionCycle& cycle() const { return cycle_; }
   uint32_t now() const { return clock_.millis(); }
   DosingLinkPort& linkPort() { return link_; }
+  /** Calibration commands to the dosing board (console "dosing ..."). */
+  DosingRemote& dosingRemote() { return remote_; }
 
  private:
   void applyParams();
@@ -131,6 +134,9 @@ class MainboardApp {
   uint32_t lastLinkOkMs_;
   bool everLinked_;
   uint32_t bootMs_;
+  uint32_t lastReplyPollMs_;
+
+  DosingRemote remote_;
 
   EcophiAverager averager_;
   DosedRateMeter dosedRate_;

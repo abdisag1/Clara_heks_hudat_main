@@ -133,6 +133,42 @@ against a reference meter at two flows and set `flow_k`, `flow_corr_gain` and
 * `flowsim 100`: simulates 100 L/min without water, to check the whole chain on the
   bench (`flowsim off` to end; the main board shows "NOTE flow is simulated").
 
+### 5. Calibrating the dosing board from the main board
+
+Every dosing calibration can also be done from the **main board's** console
+(115200 baud): put `dosing` in front of the dosing-board command. The main board
+sends it to the dosing board over the I2C link, the dosing board executes it and
+saves it in its own EEPROM, and the main board prints the answer. The dosing board's
+USB console keeps working exactly as before.
+
+| Main board console | Same as on the dosing board |
+|---|---|
+| `dosing get` / `dosing get <name\|#>` | `get` / `get <name\|#>` |
+| `dosing set <name\|#> <value>` | `set <name\|#> <value>` |
+| `dosing defaults` | `defaults` |
+| `dosing dose <mL>` / `dosing stop` | `dose <mL>` / `stop` |
+| `dosing pumpcal <revs>`, then `dosing pumpcal done <mL>` | `pumpcal ...` |
+| `dosing meter` / `dosing meter 2\|3 [k]` / `dosing meter 0` | `meter ...` |
+| `dosing flowcal start`, then `dosing flowcal done <L>` / `cancel` | `flowcal ...` |
+| `dosing flowsim <L/min>\|off` | `flowsim ...` |
+
+```
+> dosing set target_frc 1.8
+ok - dosing board saved:  0  target_frc = 1.80 mg/L  [0.10 .. 10.00]  chlorine to add to the water
+> dosing pumpcal 25
+dosing pump running - collect the output in a measuring cylinder
+dosing pump run finished - measure the volume, then dosing pumpcal done <mL>
+> dosing pumpcal done 91.25
+ok - ml_per_rev = 3.6500 (saved on the dosing board)
+```
+
+* One command runs at a time; a second one while the first is being answered gets
+  `busy`. An answer normally arrives within 0.1 to 0.3 s.
+* `error - the dosing board did not answer`: check `status` and `i2c`. Both boards
+  need firmware v3.1; with an older dosing board the main board says so.
+* Because the main-board console is also the line to the remote-monitoring unit, the
+  same text commands are what a remote calibration will send.
+
 ---
 
 ## Main board (Arduino Mega, USB port)

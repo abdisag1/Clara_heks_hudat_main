@@ -48,12 +48,31 @@ class PumpDriver {
   ~PumpDriver() {}
 };
 
-/** Receives each encoded telemetry frame (the I2C slave serves the latest one). */
+/**
+ * The I2C slave port: serves telemetry to the main board, and receives its
+ * commands (see dosing_link.h).
+ */
 class TelemetrySink {
  public:
+  /** Stores the telemetry frame served on the next requests. */
   virtual void publish(const uint8_t* frame, uint8_t length) = 0;
   /** Diagnostics: how many times the main board has requested a frame. */
   virtual uint32_t requestCount() const { return 0; }
+
+  /**
+   * Takes the command frame received from the main board, if any.
+   * @return its length (0 = no command waiting).
+   */
+  virtual uint8_t takeCommand(uint8_t* frame, uint8_t capacity) {
+    (void)frame;
+    (void)capacity;
+    return 0;
+  }
+  /** Serves @p frame once, on the next request, instead of the telemetry. */
+  virtual void publishReply(const uint8_t* frame, uint8_t length) {
+    (void)frame;
+    (void)length;
+  }
 
  protected:
   ~TelemetrySink() {}
