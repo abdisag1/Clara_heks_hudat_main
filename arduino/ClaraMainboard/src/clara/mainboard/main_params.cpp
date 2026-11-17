@@ -21,6 +21,9 @@ const char kNameBaud[] CLARA_PROGMEM = "report_baud";
 const char kNameCheckpoint[] CLARA_PROGMEM = "checkpoint_min";
 const char kNameWaterPh[] CLARA_PROGMEM = "water_ph";
 const char kNameActiveCl[] CLARA_PROGMEM = "active_cl";
+const char kNameRemoteCal[] CLARA_PROGMEM = "remote_cal";
+const char kNameUsbWindow[] CLARA_PROGMEM = "usb_window_min";
+const char kNameUsbIdle[] CLARA_PROGMEM = "usb_idle_min";
 
 const char kUnitMin[] CLARA_PROGMEM = "min";
 const char kUnitS[] CLARA_PROGMEM = "s";
@@ -43,6 +46,9 @@ const char kUnitPh[] CLARA_PROGMEM = "pH";
 const char kUnitMgL[] CLARA_PROGMEM = "mg/L";
 const char kHelpWaterPh[] CLARA_PROGMEM = "measured water pH, sent in report";
 const char kHelpActiveCl[] CLARA_PROGMEM = "measured active chlorine, sent in report";
+const char kHelpRemoteCal[] CLARA_PROGMEM = "1 = accept commands over RS485";
+const char kHelpUsbWindow[] CLARA_PROGMEM = "USB console time after reset";
+const char kHelpUsbIdle[] CLARA_PROGMEM = "back to RS485 after USB idle";
 
 // Defaults reproduce the behaviour of the v2.2 field firmware.
 const ParamInfo kTable[kParamCount] CLARA_PROGMEM = {
@@ -63,6 +69,10 @@ const ParamInfo kTable[kParamCount] CLARA_PROGMEM = {
     // water on each site visit and enters the values; they are reported as-is.
     {kNameWaterPh,     kUnitPh,   kHelpWaterPh,    0.0f,  14.0f,   7.1f,    2},
     {kNameActiveCl,    kUnitMgL,  kHelpActiveCl,   0.0f,  10.0f,   0.5f,    2},
+    // Shared serial port: USB console or RS485 remote commands (serial_input.h).
+    {kNameRemoteCal,   kUnitNone, kHelpRemoteCal,  0.0f,  1.0f,    1.0f,    0},
+    {kNameUsbWindow,   kUnitMin,  kHelpUsbWindow,  0.0f,  60.0f,   2.0f,    0},
+    {kNameUsbIdle,     kUnitMin,  kHelpUsbIdle,    1.0f,  240.0f,  10.0f,   0},
 };
 
 }  // namespace

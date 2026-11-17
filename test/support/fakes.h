@@ -271,8 +271,10 @@ class FakeMainboardIo : public clara::mainboard::MainboardIo {
     ++outputWrites;
   }
   void setChemicalAvailableSignal(bool available) override { chemicalSignal = available; }
+  void setRemoteListening(bool listening) override { remoteListening = listening; }
 
   bool levels[3];
+  bool remoteListening = false;
   uint16_t adc;
   bool chemicalSignal;
   clara::mainboard::CycleOutputs outputs;

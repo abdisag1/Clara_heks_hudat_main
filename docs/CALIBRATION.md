@@ -167,7 +167,8 @@ ok - ml_per_rev = 3.6500 (saved on the dosing board)
 * `error - the dosing board did not answer`: check `status` and `i2c`. Both boards
   need firmware v3.1; with an older dosing board the main board says so.
 * Because the main-board console is also the line to the remote-monitoring unit, the
-  same text commands are what a remote calibration will send.
+  same text commands are what a remote calibration sends: see "Remote commands over
+  RS485" in the README for the DE/RE wiring and when the RS485 input is active.
 
 ---
 
@@ -191,6 +192,9 @@ output also goes out on RS485; the Ecophi parser ignores it (it never starts wit
 | 10 | `checkpoint_min` | 30 | min | production progress saved every N min; resume point after a power cut (10–120) |
 | 11 | `water_ph` | 7.1 | pH | pH of the treated water measured on the last site visit; sent as `ph` in the report (0–14) |
 | 12 | `active_cl` | 0.5 | mg/L | active chlorine measured on the last site visit; sent as `active_cl` in the report (0–10) |
+| 13 | `remote_cal` | 1 | - | 1: accept commands from the remote unit over RS485 (needs DE on D2, RE on D5); 0: never listen |
+| 14 | `usb_window_min` | 2 | min | after a reset the USB console has the serial input this long (0–60) |
+| 15 | `usb_idle_min` | 10 | min | while the USB console is used: back to RS485 after this long without input (1–240) |
 
 **Site-visit water quality:** no pH or chlorine sensor is fitted. On each quarterly
 visit, measure the treated water at the outlet (pH and DPD chlorine test) and enter

@@ -10,10 +10,13 @@
 
 #include "clara/mainboard/display_pages.h"
 #include "clara/mainboard/mainboard_hal.h"
+#include "rs485_serial.h"
 
 /** Relays, level sensors and the voltage sensor. */
 class BoardIo : public clara::mainboard::MainboardIo {
  public:
+  explicit BoardIo(Rs485Serial& rs485) : rs485_(rs485) {}
+
   /** Configures the pins with every output off; call from setup(). */
   void begin();
 
@@ -21,6 +24,10 @@ class BoardIo : public clara::mainboard::MainboardIo {
   uint16_t readVoltageAdc() override;
   void applyOutputs(const clara::mainboard::CycleOutputs& outputs) override;
   void setChemicalAvailableSignal(bool available) override;
+  void setRemoteListening(bool listening) override { rs485_.setListening(listening); }
+
+ private:
+  Rs485Serial& rs485_;
 };
 
 /** Dosing board telemetry over I2C (this board is the bus master). */

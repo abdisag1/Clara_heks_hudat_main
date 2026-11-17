@@ -25,6 +25,11 @@ class MainboardIo {
   virtual void applyOutputs(const CycleOutputs& outputs) = 0;
   /** Signal to the dosing board that NaClO is available (wire to its A3 input). */
   virtual void setChemicalAvailableSignal(bool available) = 0;
+  /**
+   * RS485 receiver (RE pin): true = listen for remote commands between
+   * transmissions; false = receiver off, the USB console owns RX0.
+   */
+  virtual void setRemoteListening(bool listening) { (void)listening; }
 
  protected:
   ~MainboardIo() {}

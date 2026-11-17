@@ -46,6 +46,8 @@ MainboardApp::MainboardApp(const Clock& clock, MainboardIo& io, DosingLinkPort& 
       bootMs_(0),
       lastReplyPollMs_(0),
       remote_(link),
+      serialInput_(),
+      remoteListening_(false),
       status_() {}
 
 void MainboardApp::begin() {
@@ -79,6 +81,11 @@ void MainboardApp::begin() {
   // Level sensors start "empty"; they must be stable for level_debounce seconds.
   for (uint8_t i = 0; i < kLevelSensorCount; ++i) levelFilters_[i].reset(false);
   io_.setChemicalAvailableSignal(false);
+
+  // The USB console has the serial input first (see serial_input.h).
+  serialInput_.begin(nowMs);
+  remoteListening_ = false;
+  io_.setRemoteListening(false);
 
   sensorTimer_.start(nowMs);
   voltageTimer_.start(nowMs);
@@ -127,6 +134,23 @@ void MainboardApp::applyParams() {
   for (uint8_t i = 0; i < kLevelSensorCount; ++i) levelFilters_[i].setRequiredSamples(debounceSamples);
 
   reportTimer_.setPeriod(static_cast<uint32_t>(params_.get(kReportIntervalS)) * 1000ul);
+
+  serialInput_.configure(params_.get(kRemoteCal) >= 0.5f, static_cast<uint32_t>(params_.get(kUsbWindowMin)) * 60000ul,
+                         static_cast<uint32_t>(params_.get(kUsbIdleMin)) * 60000ul);
+  applySerialInputMode();
+}
+
+void MainboardApp::applySerialInputMode() {
+  const bool listening = serialInput_.mode() == SerialInputSwitch::kRemote;
+  if (listening == remoteListening_) return;
+  remoteListening_ = listening;
+  io_.setRemoteListening(listening);
+}
+
+bool MainboardApp::selectRemoteInput() {
+  const bool ok = serialInput_.selectRemote();
+  applySerialInputMode();
+  return ok;
 }
 
 void MainboardApp::saveAndApplyParams() {
@@ -150,6 +174,8 @@ void MainboardApp::update() {
     pollDosingBoard(nowMs);
   }
   remote_.update(nowMs);
+  serialInput_.update(nowMs);
+  applySerialInputMode();
 
   CycleInputs inputs;
   inputs.productionBottleFull = status_.levels[0];

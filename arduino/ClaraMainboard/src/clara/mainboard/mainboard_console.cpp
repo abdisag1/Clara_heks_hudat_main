@@ -43,13 +43,26 @@ void MainboardConsole::printBanner() {
     out_.printLineFlash(CLARA_F("  type cancel to abandon it, or set resume_batch 0 to never resume"));
   }
   if (status.progressDiscarded) out_.printLineFlash(CLARA_F("interrupted batch not resumed (resume_batch = 0)"));
+  if (app_.serialInput().remoteEnabled()) {
+    out_.printFlash(CLARA_F("USB console - RS485 remote commands start in "));
+    out_.printUInt(static_cast<uint32_t>(app_.params().get(kUsbWindowMin)));
+    out_.printLineFlash(CLARA_F(" min unless you type here"));
+  }
 }
 
 void MainboardConsole::onChar(char c) {
+  app_.noteSerialInput();
   if (reader_.push(c)) execute(reader_.line());
 }
 
 void MainboardConsole::execute(char* line) {
+  // Line noise (e.g. an RS485 bus without a sender) is not a command: ignore
+  // lines with control or non-ASCII characters without answering.
+  for (const char* p = line; *p != '\0'; ++p) {
+    if (*p != '\t' && (static_cast<uint8_t>(*p) < 0x20 || static_cast<uint8_t>(*p) > 0x7E)) return;
+  }
+  const bool fromRemote = app_.serialInput().mode() == SerialInputSwitch::kRemote;
+
   char* tokens[kMaxTokens];
   const uint8_t count = splitTokens(line, tokens, kMaxTokens);
   if (count == 0) return;
@@ -96,9 +109,18 @@ void MainboardConsole::execute(char* line) {
   } else if (is(tokens[0], CLARA_F("report"))) {
     app_.sendReportNow();
     out_.newline();
-  } else {
+  } else if (is(tokens[0], CLARA_F("remote"))) {
+    if (app_.selectRemoteInput()) {
+      out_.printLineFlash(CLARA_F("ok - commands now come from RS485, USB input is off"));
+      out_.printLineFlash(CLARA_F("  (reset the board or reopen the Serial Monitor for the USB console)"));
+    } else {
+      out_.printLineFlash(CLARA_F("error - remote_cal is 0, set remote_cal 1 first"));
+    }
+  } else if (!fromRemote) {
     out_.printLineFlash(CLARA_F("unknown command, type help"));
   }
+  // An unknown line from RS485 gets no answer: whatever else talks on the bus
+  // must not trigger replies that collide with it.
 }
 
 void MainboardConsole::printHelp() {
@@ -111,6 +133,7 @@ void MainboardConsole::printHelp() {
   out_.printLineFlash(CLARA_F("  force <standby|production|settling|transfer>"));
   out_.printLineFlash(CLARA_F("                        jump to a state (bench test)"));
   out_.printLineFlash(CLARA_F("  report                send an Ecophi frame now"));
+  out_.printLineFlash(CLARA_F("  remote                take commands from RS485 now (USB input off)"));
   printDosingHelp();
 }
 
@@ -154,6 +177,18 @@ void MainboardConsole::printStatus() {
   out_.printFlash(CLARA_F("   voltage "));
   out_.printFloat(s.voltage, 2);
   out_.printLineFlash(CLARA_F(" V"));
+
+  const SerialInputSwitch& input = app_.serialInput();
+  out_.printFlash(CLARA_F("command input "));
+  if (input.mode() == SerialInputSwitch::kRemote) {
+    out_.printLineFlash(CLARA_F("RS485 remote"));
+  } else if (!input.remoteEnabled()) {
+    out_.printLineFlash(CLARA_F("USB (remote_cal 0)"));
+  } else {
+    out_.printFlash(CLARA_F("USB, RS485 in "));
+    out_.printUInt((input.msUntilRemote(nowMs) + 999u) / 1000u);
+    out_.printLineFlash(CLARA_F(" s"));
+  }
 
   out_.printFlash(CLARA_F("dosing link "));
   out_.printFlash(s.linkOk ? CLARA_F("ok") : CLARA_F("LOST"));

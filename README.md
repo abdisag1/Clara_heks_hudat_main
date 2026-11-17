@@ -174,5 +174,35 @@ See [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) (I2C link, PCB jumpers)
 
 ## Pin assignments
 
-Unchanged from v2.2; see [`src/mainboard/pins.h`](src/mainboard/pins.h) and
-[`src/dosing/pins.h`](src/dosing/pins.h).
+As v2.2 (see [`src/mainboard/pins.h`](src/mainboard/pins.h) and
+[`src/dosing/pins.h`](src/dosing/pins.h)), except the RS485 transceiver on the
+main board, which needs this hardware change for remote commands:
+
+| RS485 module | Mega pin | Extra part |
+|---|---|---|
+| DE | D2 | 10 kΩ pull-down to GND (transmitter off during reset) |
+| RE | D5 (was tied to DE) | 10 kΩ pull-up to 5 V (receiver off during reset and upload) |
+| DI | TX0 (pin 1) | unchanged |
+| RO | RX0 (pin 0) | unchanged |
+
+## Remote commands over RS485
+
+Pins 0/1 are shared by the USB console and the RS485 module. The RS485 receiver
+output overpowers the USB chip on RX0, so only one of them can send commands at a
+time ([`serial_input.h`](lib/clara_mainboard/src/clara/mainboard/serial_input.h)):
+
+1. After power-up or reset the receiver is off (RE HIGH) for `usb_window_min`
+   (2 min): the USB console works. Opening the Serial Monitor resets the Mega, so a
+   technician always starts here.
+2. Typing on USB keeps the USB console until `usb_idle_min` (10 min) pass without
+   input, or `remote` is typed.
+3. Then the receiver listens (DE LOW, RE LOW) and every console command, including
+   `dosing ...`, can be sent by the remote unit as one text line ending in `\n`.
+   Unknown lines and noise get no answer, so nothing collides on the bus.
+4. Each transmission (report or answer) switches to DE HIGH, RE HIGH and returns to
+   listening only after the last byte has left the UART.
+5. `set remote_cal 0` switches the receiver off for good (v3.0 behaviour).
+
+The remote unit must only send while Clara is not transmitting (RS485 is half
+duplex). `test/simavr/run_mainboard_sim.sh` checks the DE/RE timing on the compiled
+firmware.

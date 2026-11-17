@@ -656,6 +656,80 @@ void test_mainboard_report_baud_rate() {
   TEST_ASSERT_EQUAL_UINT32(115200, rebooted.app.serialBaudRate());
 }
 
+void runMain(MainBench& bench, fakes::FakeClock& clock, uint32_t ms) {
+  for (uint32_t t = 0; t < ms; t += 100) {
+    clock.advanceMs(100);
+    bench.app.update();
+  }
+}
+
+void test_mainboard_rs485_receiver_after_usb_window() {
+  fakes::FakeEeprom eeprom;
+  fakes::FakeClock clock;
+  DeadLink link;
+  MainBench bench(clock, link, eeprom);
+  bench.app.begin();
+  bench.shell.printBanner();
+  TEST_ASSERT_TRUE(bench.serial.contains("RS485 remote commands start in 2 min unless you type here"));
+  TEST_ASSERT_FALSE(bench.io.remoteListening);  // USB console first
+  runMain(bench, clock, 2 * kMinute);
+  TEST_ASSERT_TRUE(bench.io.remoteListening);   // nobody typed: listen on RS485
+
+  // Remote commands work; unknown lines and noise get no answer.
+  bench.serial.clear();
+  bench.type("get water_ph");
+  TEST_ASSERT_TRUE(bench.serial.contains("water_ph = 7.10"));
+  bench.serial.clear();
+  bench.type("hello");
+  bench.type("\x01\xff garbage");
+  TEST_ASSERT_EQUAL_STRING("", bench.serial.text().c_str());
+  bench.type("status");
+  TEST_ASSERT_TRUE(bench.serial.contains("command input RS485 remote"));
+}
+
+void test_mainboard_usb_console_keeps_rs485_off_while_used() {
+  fakes::FakeEeprom eeprom;
+  fakes::FakeClock clock;
+  DeadLink link;
+  MainBench bench(clock, link, eeprom);
+  bench.app.begin();
+  runMain(bench, clock, 1 * kMinute);
+  bench.type("status");  // technician on USB
+  TEST_ASSERT_TRUE(bench.serial.contains("command input USB, RS485 in 600 s"));
+  runMain(bench, clock, 9 * kMinute);
+  TEST_ASSERT_FALSE(bench.io.remoteListening);
+  bench.type("get usb_idle_min");
+  runMain(bench, clock, 9 * kMinute);
+  TEST_ASSERT_FALSE(bench.io.remoteListening);
+  runMain(bench, clock, 1 * kMinute + kSecond);  // 10 min without USB input
+  TEST_ASSERT_TRUE(bench.io.remoteListening);
+}
+
+void test_mainboard_remote_command_and_remote_cal_off() {
+  fakes::FakeEeprom eeprom;
+  {
+    fakes::FakeClock clock;
+    DeadLink link;
+    MainBench bench(clock, link, eeprom);
+    bench.app.begin();
+    bench.type("remote");
+    TEST_ASSERT_TRUE(bench.serial.contains("ok - commands now come from RS485"));
+    TEST_ASSERT_TRUE(bench.io.remoteListening);
+    bench.type("set remote_cal 0");  // e.g. sent remotely: receiver off at once
+    TEST_ASSERT_FALSE(bench.io.remoteListening);
+  }
+  fakes::FakeClock clock;
+  DeadLink link;
+  MainBench bench(clock, link, eeprom);
+  bench.app.begin();
+  runMain(bench, clock, 60 * kMinute);
+  TEST_ASSERT_FALSE(bench.io.remoteListening);  // never listens, as v3.0
+  bench.type("remote");
+  TEST_ASSERT_TRUE(bench.serial.contains("error - remote_cal is 0"));
+  bench.type("hello");
+  TEST_ASSERT_TRUE(bench.serial.contains("unknown command"));  // USB still answers
+}
+
 void test_mainboard_imports_v22_settings() {
   fakes::FakeClock clock;
   fakes::FakeEeprom eeprom;
@@ -1072,6 +1146,9 @@ int main() {
   RUN_TEST(test_mainboard_keeps_settings_saved_by_previous_firmware);
   RUN_TEST(test_mainboard_report_baud_rate);
   RUN_TEST(test_mainboard_reports_site_visit_ph_and_chlorine);
+  RUN_TEST(test_mainboard_rs485_receiver_after_usb_window);
+  RUN_TEST(test_mainboard_usb_console_keeps_rs485_off_while_used);
+  RUN_TEST(test_mainboard_remote_command_and_remote_cal_off);
   RUN_TEST(test_mainboard_imports_v22_settings);
   RUN_TEST(test_mainboard_console_changes_production_time);
   RUN_TEST(test_mainboard_shows_link_loss);

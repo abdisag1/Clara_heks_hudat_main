@@ -6,7 +6,9 @@
  * sensors, shows the status on a 20x4 LCD, polls the dosing board over I2C and
  * reports to the Ecophi remote-monitoring unit over RS485 (Serial, baud rate =
  * parameter report_baud, default 115200).
- * The same serial port offers a calibration console (type "help").
+ * The same serial port offers a calibration console (type "help"), used from
+ * USB or, between reports, by the remote unit over RS485 (see rs485_serial.h
+ * and clara/mainboard/serial_input.h).
  *
  * All logic lives in lib/clara_mainboard (unit tested on the PC); this file
  * only creates the hardware drivers and wires them together.
@@ -22,10 +24,10 @@
 #include "board_io.h"
 #include "clara/arduino/arduino_clock.h"
 #include "clara/arduino/eeprom_device.h"
-#include "clara/arduino/print_output.h"
 #include "clara/mainboard/mainboard_app.h"
 #include "clara/mainboard/mainboard_console.h"
 #include "pins.h"
+#include "rs485_serial.h"
 
 namespace {
 
@@ -33,11 +35,11 @@ namespace {
 // initialised in setup(), after the Arduino core's init().
 LiquidCrystal_I2C gLcd(pins::kLcdAddress, clara::mainboard::kLcdColumns, clara::mainboard::kLcdRows);
 clara::ArduinoClock gClock;
-BoardIo gIo;
+Rs485Serial gSerialOutput(Serial, pins::kRs485DriverEnable, pins::kRs485ReceiverEnable);  // RS485 + USB console
+BoardIo gIo(gSerialOutput);
 I2cDosingLink gDosingLink;
 LcdDisplay gDisplay(gLcd);
 clara::ArduinoEeprom gEeprom;
-clara::PrintOutput gSerialOutput(Serial);  // RS485 to Ecophi + USB console
 
 clara::mainboard::MainboardApp gApp(gClock, gIo, gDosingLink, gDisplay, gSerialOutput, gEeprom);
 clara::mainboard::MainboardConsole gConsole(gApp, gSerialOutput);
@@ -49,7 +51,7 @@ void applySerialBaudRate() {
   const uint32_t baud = gApp.serialBaudRate();
   if (baud == gSerialBaud) return;
   if (gSerialBaud != 0) {
-    Serial.flush();  // let the "switching" reply leave at the old rate
+    gSerialOutput.finishTransmission();  // let the "switching" reply leave at the old rate
     Serial.end();
   }
   Serial.begin(baud);
@@ -64,8 +66,7 @@ void setup() {
 #endif
   gIo.begin();  // outputs off first
 
-  pinMode(pins::kRs485Direction, OUTPUT);
-  digitalWrite(pins::kRs485Direction, HIGH);  // transmit only, as in v2.2
+  gSerialOutput.begin();  // transmitter on, receiver off: the USB console has RX0
 
   Wire.begin();
 #if defined(WIRE_HAS_TIMEOUT)
@@ -93,4 +94,5 @@ void loop() {
   applySerialBaudRate();
   gApp.update();
   gConsole.update();  // prints the answers of "dosing ..." commands
+  gSerialOutput.finishTransmission();  // back to receive once the last byte has left
 }

@@ -28,6 +28,9 @@ enum Param {
   kCheckpointMin,      ///< Production progress is saved every N minutes (resume point after a power cut).
   kWaterPh,            ///< pH of the treated water, measured by hand on site visits (no pH sensor fitted).
   kActiveChlorine,     ///< Active chlorine of the treated water, mg/L, measured by hand on site visits.
+  kRemoteCal,          ///< 1: accept commands from the remote unit on RS485 (see serial_input.h).
+  kUsbWindowMin,       ///< After a reset the USB console has the serial input for this long, min.
+  kUsbIdleMin,         ///< USB console in use: back to remote after this long without input, min.
   kParamCount
 };
 

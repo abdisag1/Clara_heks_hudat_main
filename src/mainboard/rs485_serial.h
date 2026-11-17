@@ -1,0 +1,48 @@
+/**
+ * @file rs485_serial.h
+ * @brief Serial (pins 0/1) shared by the USB console and a half-duplex RS485
+ *        transceiver with separate DE (transmit) and RE (receive) pins.
+ *
+ * Every write first switches the transceiver to transmit (DE HIGH, RE HIGH, so
+ * Clara never reads its own report back as a command). finishTransmission(),
+ * called at the end of each loop() pass, waits until the last byte has left
+ * the UART and returns to the idle state:
+ *
+ *   listening (REMOTE mode)   DE LOW,  RE LOW   receiver drives RX0
+ *   not listening (USB mode)  DE HIGH, RE HIGH  as v3.0: bus driven idle,
+ *                                               RX0 free for the USB chip
+ */
+#ifndef CLARA_RS485_SERIAL_H
+#define CLARA_RS485_SERIAL_H
+
+#include <Arduino.h>
+
+#include "clara/text_output.h"
+
+class Rs485Serial : public clara::TextOutput {
+ public:
+  Rs485Serial(HardwareSerial& serial, uint8_t driverEnablePin, uint8_t receiverEnablePin);
+
+  /** Configures the pins: transmitter idle-driving, receiver off (USB mode). */
+  void begin();
+
+  void write(const char* text) override;
+  void writeFlash(const char* flashText) override;
+
+  /** Switches the receiver between transmissions on (REMOTE) or off (USB). */
+  void setListening(bool listening);
+  /** Waits for the last byte, then back to the idle state. Call every loop(). */
+  void finishTransmission();
+
+ private:
+  void startTransmission();
+  void applyIdleState();
+
+  HardwareSerial& serial_;
+  uint8_t driverEnablePin_;
+  uint8_t receiverEnablePin_;
+  bool listening_;
+  bool transmitting_;
+};
+
+#endif  // CLARA_RS485_SERIAL_H

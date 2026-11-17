@@ -11,6 +11,7 @@
 #include "clara/mainboard/ecophi_report.h"
 #include "clara/mainboard/main_params.h"
 #include "clara/mainboard/production_cycle.h"
+#include "clara/mainboard/serial_input.h"
 #include "clara/mainboard/voltage.h"
 
 using namespace clara;
@@ -499,6 +500,48 @@ void test_voltage_conversion_matches_v22() {
   TEST_ASSERT_FLOAT_WITHIN(1e-3f, 128.0f * 4.85f / 1024.0f * 22.2f, adcToVolts(128.0f, 4.85f, 22.2f));
 }
 
+void test_serial_input_switch() {
+  using clara::mainboard::SerialInputSwitch;
+  const uint32_t min = 60000;
+  SerialInputSwitch input;
+  input.configure(true, 2 * min, 10 * min);
+  input.begin(0);
+  TEST_ASSERT_EQUAL(SerialInputSwitch::kUsb, input.mode());
+  input.update(2 * min - 1);
+  TEST_ASSERT_EQUAL(SerialInputSwitch::kUsb, input.mode());
+  input.update(2 * min);  // nobody typed on USB: RS485 takes over
+  TEST_ASSERT_EQUAL(SerialInputSwitch::kRemote, input.mode());
+  input.onInput(3 * min);  // remote input does not bring USB back
+  input.update(3 * min);
+  TEST_ASSERT_EQUAL(SerialInputSwitch::kRemote, input.mode());
+
+  input.begin(0);           // reset (Serial Monitor opened)
+  input.onInput(1 * min);   // technician types
+  input.update(5 * min);
+  TEST_ASSERT_EQUAL(SerialInputSwitch::kUsb, input.mode());
+  TEST_ASSERT_EQUAL_UINT32(6 * min, input.msUntilRemote(5 * min));
+  input.onInput(8 * min);
+  input.update(17 * min);
+  TEST_ASSERT_EQUAL(SerialInputSwitch::kUsb, input.mode());
+  input.update(18 * min);   // 10 min without USB input
+  TEST_ASSERT_EQUAL(SerialInputSwitch::kRemote, input.mode());
+
+  input.begin(0);
+  TEST_ASSERT_TRUE(input.selectRemote());  // "remote" command
+  TEST_ASSERT_EQUAL(SerialInputSwitch::kRemote, input.mode());
+
+  input.configure(false, 2 * min, 10 * min);  // remote_cal = 0
+  TEST_ASSERT_EQUAL(SerialInputSwitch::kUsb, input.mode());
+  input.update(60 * min);
+  TEST_ASSERT_EQUAL(SerialInputSwitch::kUsb, input.mode());
+  TEST_ASSERT_FALSE(input.selectRemote());
+
+  input.configure(true, 0, 10 * min);  // usb_window_min = 0: remote at once
+  input.begin(0);
+  input.update(0);
+  TEST_ASSERT_EQUAL(SerialInputSwitch::kRemote, input.mode());
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_main_defaults_are_valid_and_match_v22);
@@ -527,6 +570,7 @@ int main() {
   RUN_TEST(test_display_alarms_and_splash);
   RUN_TEST(test_display_lines_never_exceed_20_columns);
   RUN_TEST(test_standard_baud_rates);
+  RUN_TEST(test_serial_input_switch);
   RUN_TEST(test_voltage_conversion_matches_v22);
   return UNITY_END();
 }

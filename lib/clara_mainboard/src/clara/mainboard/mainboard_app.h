@@ -18,6 +18,7 @@
 #include "clara/mainboard/main_params.h"
 #include "clara/mainboard/mainboard_hal.h"
 #include "clara/mainboard/production_cycle.h"
+#include "clara/mainboard/serial_input.h"
 #include "clara/param_store.h"
 #include "clara/periodic_timer.h"
 #include "clara/text_output.h"
@@ -95,6 +96,13 @@ class MainboardApp {
   const ProductionCycle& cycle() const { return cycle_; }
   uint32_t now() const { return clock_.millis(); }
   DosingLinkPort& linkPort() { return link_; }
+  /** Who may send commands on the serial port: USB console or RS485 remote. */
+  const SerialInputSwitch& serialInput() const { return serialInput_; }
+  /** The console received a character (keeps the USB console active). */
+  void noteSerialInput() { serialInput_.onInput(clock_.millis()); }
+  /** "remote" command: hand the serial input to RS485 now. @return false if remote_cal = 0. */
+  bool selectRemoteInput();
+
   /** Calibration commands to the dosing board (console "dosing ..."). */
   DosingRemote& dosingRemote() { return remote_; }
 
@@ -107,6 +115,7 @@ class MainboardApp {
   void refreshDisplay(uint32_t nowMs);
   void sendReport(uint32_t nowMs);
   void persistProgress(uint32_t nowMs, bool force = false);
+  void applySerialInputMode();
 
   const Clock& clock_;
   MainboardIo& io_;
@@ -137,6 +146,8 @@ class MainboardApp {
   uint32_t lastReplyPollMs_;
 
   DosingRemote remote_;
+  SerialInputSwitch serialInput_;
+  bool remoteListening_;
 
   EcophiAverager averager_;
   DosedRateMeter dosedRate_;
