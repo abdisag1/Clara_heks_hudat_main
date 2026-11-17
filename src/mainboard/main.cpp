@@ -17,9 +17,7 @@
 #include <LiquidCrystal_I2C.h>
 #include <Wire.h>
 
-#if defined(CLARA_ENABLE_WATCHDOG)
 #include <avr/wdt.h>
-#endif
 
 #include "board_io.h"
 #include "clara/arduino/arduino_clock.h"
@@ -28,6 +26,14 @@
 #include "clara/mainboard/mainboard_console.h"
 #include "pins.h"
 #include "rs485_serial.h"
+
+// After a watchdog reset (the "restart" command) the watchdog stays enabled
+// with its shortest timeout: switch it off before the C++ start-up code runs.
+void clearWatchdogAtStartup() __attribute__((naked, used, section(".init3")));
+void clearWatchdogAtStartup() {
+  MCUSR = 0;
+  wdt_disable();
+}
 
 namespace {
 
@@ -60,10 +66,15 @@ void applySerialBaudRate() {
 
 }  // namespace
 
+/** "restart" command: the processor is reset by the watchdog (15 ms). */
+void restartProcessor() {
+  gSerialOutput.finishTransmission();  // the "ok - restarting" reply has left
+  wdt_enable(WDTO_15MS);
+  for (;;) {
+  }
+}
+
 void setup() {
-#if defined(CLARA_ENABLE_WATCHDOG)
-  wdt_disable();
-#endif
   gIo.begin();  // outputs off first
 
   gSerialOutput.begin();  // transmitter on, receiver off: the USB console has RX0
@@ -95,4 +106,5 @@ void loop() {
   gApp.update();
   gConsole.update();  // prints the answers of "dosing ..." commands
   gSerialOutput.finishTransmission();  // back to receive once the last byte has left
+  if (gApp.restartRequested()) restartProcessor();
 }

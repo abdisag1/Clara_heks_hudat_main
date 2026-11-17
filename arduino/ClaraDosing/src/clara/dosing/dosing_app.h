@@ -88,6 +88,9 @@ class DosingApp {
   // --- Commands from the main board (I2C, see dosing_link.h) -----------------
   /** Executes one command and returns the reply. Also used by the tests. */
   link::CommandReply execute(const link::CommandFrame& command);
+  /** Restart requested (I2C command or console): the main loop resets the processor. */
+  void requestRestart() { restartRequested_ = true; }
+  bool restartRequested() const { return restartRequested_; }
   /** Commands received from the main board since start-up (diagnostics). */
   uint32_t commandCount() const { return commandCount_; }
 
@@ -163,6 +166,7 @@ class DosingApp {
   uint32_t lastCommandMs_;
   uint8_t lastReplyFrame_[link::kReplyFrameSize];
   uint32_t commandCount_;
+  bool restartRequested_;
   DosingStatus status_;
 };
 

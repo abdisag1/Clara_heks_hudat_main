@@ -89,6 +89,9 @@ void DosingConsole::execute(char* line) {
     handleMeter(tokens, count);
   } else if (is(tokens[0], CLARA_F("flowsim"))) {
     handleFlowSim(tokens, count);
+  } else if (is(tokens[0], CLARA_F("restart")) && count == 1) {
+    out_.printLineFlash(CLARA_F("restarting the dosing board"));
+    app_.requestRestart();
   } else if (is(tokens[0], CLARA_F("stop"))) {
     app_.stopPump();
     out_.printLineFlash(CLARA_F("pump stopped"));
@@ -115,6 +118,7 @@ void DosingConsole::printHelp() {
   out_.printLineFlash(CLARA_F("  flowsim <L/min>|off   simulate flow (bench test)"));
   out_.printLineFlash(CLARA_F("  stop                  stop the pump"));
   out_.printLineFlash(CLARA_F("  log on|off            print each dosing decision"));
+  out_.printLineFlash(CLARA_F("  restart               restart the dosing board"));
 }
 
 void DosingConsole::printStatus() {

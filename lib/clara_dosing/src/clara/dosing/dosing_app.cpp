@@ -23,6 +23,7 @@ DosingApp::DosingApp(const Clock& clock, FlowSensor& flowSensor, PumpDriver& pum
       lastCommandMs_(0),
       lastReplyFrame_(),
       commandCount_(0),
+      restartRequested_(false),
       status_() {}
 
 void DosingApp::begin() {
@@ -346,6 +347,9 @@ link::CommandReply DosingApp::execute(const link::CommandFrame& command) {
       } else {
         setFlowSimulation(command.index != 0, command.value);
       }
+      break;
+    case link::kCmdRestart:
+      requestRestart();
       break;
     default:
       reply.result = link::kResultUnknownCommand;

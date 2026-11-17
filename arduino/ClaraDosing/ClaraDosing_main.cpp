@@ -24,6 +24,14 @@
 #include "stepper_pump.h"
 #include "telemetry_slave.h"
 
+// After a watchdog reset the watchdog stays enabled with its shortest
+// timeout: switch it off before the C++ start-up code runs.
+void clearWatchdogAtStartup() __attribute__((naked, used, section(".init3")));
+void clearWatchdogAtStartup() {
+  MCUSR = 0;
+  wdt_disable();
+}
+
 namespace {
 
 // Global objects only store configuration in their constructors; hardware is
@@ -39,6 +47,22 @@ clara::PrintOutput gConsoleOutput(Serial);
 
 clara::dosing::DosingApp gApp(gClock, gFlowSensor, gPump, gChemicalLevel, gEeprom, gTelemetry);
 clara::dosing::DosingConsole gConsole(gApp, gConsoleOutput);
+
+uint32_t gRestartRequestMs = 0;
+
+/**
+ * "restart" (console or main board): reset once the I2C reply has been served
+ * (so the main board learns the command arrived), at the latest after 300 ms.
+ */
+void serviceRestart() {
+  if (!gApp.restartRequested()) return;
+  if (gRestartRequestMs == 0) gRestartRequestMs = millis() | 1u;
+  if (gTelemetry.replyPending() && millis() - gRestartRequestMs < 300u) return;
+  Serial.flush();
+  wdt_enable(WDTO_15MS);
+  for (;;) {
+  }
+}
 
 }  // namespace
 
@@ -65,4 +89,5 @@ void loop() {
   gApp.update();
   gPump.service();
   gConsole.update();
+  serviceRestart();
 }

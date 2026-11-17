@@ -118,6 +118,7 @@ enum Command {
   kCmdFlowCalCancel = 10,
   kCmdSelectMeter = 11,   ///< index = 2 / 3 (inch) or 0 (other), value = k override (0 = datasheet).
   kCmdFlowSim = 12,       ///< index = 1 on / 0 off, value = simulated L/min (not saved).
+  kCmdRestart = 13,       ///< Reset the dosing processor after the reply has been served.
 };
 
 enum CommandResult {

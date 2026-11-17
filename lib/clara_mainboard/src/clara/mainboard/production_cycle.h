@@ -138,7 +138,11 @@ class ProductionCycle {
   uint32_t completedCycles() const { return completedCycles_; }
 
   /** Progress to save; the elapsed time is rounded down to the last checkpoint. */
-  CycleProgress progress(uint32_t nowMs) const;
+  /**
+   * Snapshot to save. The elapsed time is rounded down to the last checkpoint,
+   * unless @p exact (planned restart: resume exactly where it was).
+   */
+  CycleProgress progress(uint32_t nowMs, bool exact = false) const;
 
   /**
    * @return true (once) when the progress should be written to EEPROM: on a

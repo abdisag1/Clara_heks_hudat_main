@@ -21,6 +21,8 @@ class I2cTelemetrySlave : public clara::dosing::TelemetrySink {
   uint32_t requestCount() const override;
   uint8_t takeCommand(uint8_t* frame, uint8_t capacity) override;
   void publishReply(const uint8_t* frame, uint8_t length) override;
+  /** A command reply is waiting to be read by the main board. */
+  bool replyPending() const;
 };
 
 #endif  // CLARA_TELEMETRY_SLAVE_H

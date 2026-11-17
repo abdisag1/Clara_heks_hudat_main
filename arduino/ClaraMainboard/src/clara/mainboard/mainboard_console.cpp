@@ -38,6 +38,7 @@ void MainboardConsole::printBanner() {
   if (status.calibrationLoad != ParamPersistence::kLoadOk) {
     out_.printLineFlash(CLARA_F("warning - no valid calibration in EEPROM, defaults in use"));
   }
+  if (status.restartedByCommand) out_.printLineFlash(CLARA_F("restarted by the restart command"));
   if (status.progressRestored) {
     out_.printLineFlash(CLARA_F("resumed the batch interrupted by a power cut"));
     out_.printLineFlash(CLARA_F("  type cancel to abandon it, or set resume_batch 0 to never resume"));
@@ -109,6 +110,9 @@ void MainboardConsole::execute(char* line) {
   } else if (is(tokens[0], CLARA_F("report"))) {
     app_.sendReportNow();
     out_.newline();
+  } else if (is(tokens[0], CLARA_F("restart")) && count == 1) {
+    out_.printLineFlash(CLARA_F("ok - restarting the main board, the batch continues where it is"));
+    app_.requestRestart(fromRemote);
   } else if (is(tokens[0], CLARA_F("remote"))) {
     if (app_.selectRemoteInput()) {
       out_.printLineFlash(CLARA_F("ok - commands now come from RS485, USB input is off"));
@@ -134,6 +138,7 @@ void MainboardConsole::printHelp() {
   out_.printLineFlash(CLARA_F("                        jump to a state (bench test)"));
   out_.printLineFlash(CLARA_F("  report                send an Ecophi frame now"));
   out_.printLineFlash(CLARA_F("  remote                take commands from RS485 now (USB input off)"));
+  out_.printLineFlash(CLARA_F("  restart               restart the main board (batch continues)"));
   printDosingHelp();
 }
 
@@ -147,6 +152,7 @@ void MainboardConsole::printDosingHelp() {
   out_.printLineFlash(CLARA_F("  dosing meter [2|3 [k]]       show or select the flowmeter"));
   out_.printLineFlash(CLARA_F("  dosing flowcal start, then dosing flowcal done <L> | cancel"));
   out_.printLineFlash(CLARA_F("  dosing flowsim <L/min>|off   simulate flow (bench test)"));
+  out_.printLineFlash(CLARA_F("  dosing restart               restart the dosing board"));
 }
 
 void MainboardConsole::printStatus() {
@@ -349,6 +355,8 @@ void MainboardConsole::handleDosing(char** tokens, uint8_t count) {
     if (index == dosing::kFlowMeterSize) queue(link::kCmdGetParam, dosing::kFlowKFactor);
   } else if (is(sub, CLARA_F("defaults")) && count == 2) {
     queue(link::kCmdDefaults);
+  } else if (is(sub, CLARA_F("restart")) && count == 2) {
+    queue(link::kCmdRestart);
   } else if (is(sub, CLARA_F("stop")) && count == 2) {
     queue(link::kCmdStop);
   } else if (is(sub, CLARA_F("dose")) && count == 3 && parseFloat(tokens[2], value)) {
@@ -477,6 +485,10 @@ void MainboardConsole::printReply(const link::CommandReply& reply) {
       } else {
         out_.printLineFlash(CLARA_F("error - volume must be 0 < mL <= 1000"));
       }
+      break;
+    case link::kCmdRestart:
+      watchPumpRun_ = false;
+      out_.printLineFlash(CLARA_F("ok - dosing board restarting (calibration kept, totals start at 0)"));
       break;
     case link::kCmdStop:
       watchPumpRun_ = false;

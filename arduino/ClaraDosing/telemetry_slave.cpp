@@ -84,3 +84,5 @@ void I2cTelemetrySlave::publishReply(const uint8_t* frame, uint8_t length) {
     gReplyPending = true;
   }
 }
+
+bool I2cTelemetrySlave::replyPending() const { return gReplyPending; }

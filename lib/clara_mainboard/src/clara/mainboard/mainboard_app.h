@@ -28,8 +28,13 @@ namespace mainboard {
 
 // --- EEPROM map ----------------------------------------------------------------
 // 0 .. 83    v2.2 data (read once to import settling/transfer times)
+// 120        restart flag (kRestart*): set by the restart command, cleared at start-up
 // 128 ..     calibration parameters (ParamPersistence)
 // 256 ..     production progress ring buffer (8 slots x 11 bytes)
+const uint16_t kEepromRestartFlagAddress = 120;
+const uint8_t kRestartNone = 0xFF;          ///< Erased EEPROM: normal power-up.
+const uint8_t kRestartFromUsb = 0xA1;       ///< "restart" typed on the USB console.
+const uint8_t kRestartFromRemote = 0xA2;    ///< "restart" received over RS485.
 const uint16_t kEepromParamsAddress = 128;
 const uint16_t kEepromProgressAddress = 256;
 const uint8_t kProgressSlots = 8;
@@ -56,6 +61,7 @@ struct MainboardStatus {
   bool progressRestored;           ///< A batch was resumed after a power cut.
   bool progressDiscarded;          ///< A batch was interrupted, but resume_batch = 0.
   bool legacyImported;             ///< v2.2 settling/transfer times imported.
+  bool restartedByCommand;         ///< This start-up followed the "restart" command.
 };
 
 class MainboardApp {
@@ -103,6 +109,17 @@ class MainboardApp {
   /** "remote" command: hand the serial input to RS485 now. @return false if remote_cal = 0. */
   bool selectRemoteInput();
 
+  /**
+   * "restart" command: saves the batch exactly where it is (it resumes at the
+   * same minute after the restart, even with resume_batch = 0) and asks the
+   * firmware to reset the processor (restartRequested()). After a restart
+   * requested over RS485 the board listens on RS485 at once instead of giving
+   * the USB console its usb_window_min first.
+   */
+  void requestRestart(bool fromRemote);
+  /** The main loop must reset the processor once the reply has been sent. */
+  bool restartRequested() const { return restartRequested_; }
+
   /** Calibration commands to the dosing board (console "dosing ..."). */
   DosingRemote& dosingRemote() { return remote_; }
 
@@ -148,6 +165,7 @@ class MainboardApp {
   DosingRemote remote_;
   SerialInputSwitch serialInput_;
   bool remoteListening_;
+  bool restartRequested_;
 
   EcophiAverager averager_;
   DosedRateMeter dosedRate_;

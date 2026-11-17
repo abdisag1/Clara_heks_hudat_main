@@ -166,12 +166,12 @@ uint16_t ProductionCycle::remainingMinutes(uint32_t nowMs) const {
   return static_cast<uint16_t>((remainingMs(nowMs) + 59999ul) / 60000ul);
 }
 
-CycleProgress ProductionCycle::progress(uint32_t nowMs) const {
+CycleProgress ProductionCycle::progress(uint32_t nowMs, bool exact) const {
   CycleProgress progress;
   progress.state = static_cast<uint8_t>(state_);
   progress.polarityReversed = polarityReversed_ ? 1 : 0;
   uint32_t elapsed = elapsedMs(nowMs);
-  if (times_.checkpointMs > 0) elapsed = elapsed / times_.checkpointMs * times_.checkpointMs;
+  if (times_.checkpointMs > 0 && !exact) elapsed = elapsed / times_.checkpointMs * times_.checkpointMs;
   const uint32_t minutes = elapsed / 60000ul;
   progress.elapsedMinutes = static_cast<uint16_t>(minutes > 0xFFFFu ? 0xFFFFu : minutes);
   progress.completedCycles = completedCycles_;

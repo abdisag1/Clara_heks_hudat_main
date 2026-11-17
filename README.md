@@ -203,6 +203,21 @@ time ([`serial_input.h`](lib/clara_mainboard/src/clara/mainboard/serial_input.h)
    listening only after the last byte has left the UART.
 5. `set remote_cal 0` switches the receiver off for good (v3.0 behaviour).
 
+### Remote restart
+
+* `restart` restarts the main board (watchdog reset, after the reply has been sent).
+  The running batch is saved at the exact minute and continues after the restart,
+  even with `resume_batch 0` (a restart is not a power cut). After a restart sent over
+  RS485 the board listens on RS485 at once (no USB window); the banner says
+  "restarted by the restart command".
+* `dosing restart` restarts the dosing board (also `restart` on its own USB console).
+  Its calibration is kept; its water and NaClO totals start again at 0.
+* **Bench-test `restart` on each Mega first.** The original Mega 2560 bootloader of
+  some clones does not handle a watchdog reset and keeps resetting until the power is
+  switched off. If the board does not come back within a few seconds, power-cycle it
+  and burn an up-to-date bootloader (Arduino IDE: Tools → Burn Bootloader) before using
+  remote restart on that unit. The Uno (Optiboot) is not affected.
+
 The remote unit must only send while Clara is not transmitting (RS485 is half
 duplex). `test/simavr/run_mainboard_sim.sh` checks the DE/RE timing on the compiled
 firmware.

@@ -730,6 +730,62 @@ void test_mainboard_remote_command_and_remote_cal_off() {
   TEST_ASSERT_TRUE(bench.serial.contains("unknown command"));  // USB still answers
 }
 
+/** Production started, then "restart" typed after @p minutes; returns the EEPROM. */
+void restartDuringProduction(fakes::FakeEeprom& eeprom, uint32_t minutes, bool resume, bool remote) {
+  fakes::FakeClock clock;
+  DeadLink link;
+  MainBench bench(clock, link, eeprom);
+  bench.app.begin();
+  if (!resume) bench.type("set resume_batch 0");
+  if (remote) {
+    bench.type("remote");
+  } else {
+    bench.type("set usb_idle_min 240");  // technician stays on USB for the whole test
+  }
+  bench.io.levels[0] = true;
+  runMain(bench, clock, 11 * kSecond);  // level debounce: production starts
+  TEST_ASSERT_EQUAL(mainboard::kStateProduction, bench.app.cycle().state());
+  runMain(bench, clock, minutes * kMinute);
+  bench.serial.clear();
+  bench.type("restart");
+  TEST_ASSERT_TRUE(bench.serial.contains("ok - restarting the main board"));
+  TEST_ASSERT_TRUE(bench.app.restartRequested());
+}
+
+void test_mainboard_restart_command_keeps_batch_position() {
+  fakes::FakeEeprom eeprom;
+  restartDuringProduction(eeprom, 47, true, false);
+  fakes::FakeClock clock;
+  DeadLink link;
+  MainBench bench(clock, link, eeprom);
+  bench.app.begin();
+  bench.shell.printBanner();
+  TEST_ASSERT_TRUE(bench.serial.contains("restarted by the restart command"));
+  TEST_ASSERT_EQUAL(mainboard::kStateProduction, bench.app.cycle().state());
+  // Exactly where it was (47 min done), not the 30-min checkpoint.
+  TEST_ASSERT_EQUAL_UINT16(180 - 47, bench.app.cycle().remainingMinutes(clock.millis()));
+  TEST_ASSERT_FALSE(bench.app.restartRequested());
+  TEST_ASSERT_FALSE(bench.io.remoteListening);  // restarted from USB: USB console first
+
+  // The flag is used once: a later power cut is a normal power cut again.
+  fakes::FakeClock clock2;
+  MainBench again(clock2, link, eeprom);
+  again.app.begin();
+  TEST_ASSERT_FALSE(again.app.status().restartedByCommand);
+}
+
+void test_mainboard_remote_restart_listens_at_once_and_resumes_even_without_resume_batch() {
+  fakes::FakeEeprom eeprom;
+  restartDuringProduction(eeprom, 20, false, true);
+  fakes::FakeClock clock;
+  DeadLink link;
+  MainBench bench(clock, link, eeprom);
+  bench.app.begin();
+  TEST_ASSERT_TRUE(bench.io.remoteListening);  // no 2-min USB window after a remote restart
+  TEST_ASSERT_EQUAL(mainboard::kStateProduction, bench.app.cycle().state());  // resume_batch 0, still resumed
+  TEST_ASSERT_EQUAL_UINT16(180 - 20, bench.app.cycle().remainingMinutes(clock.millis()));
+}
+
 void test_mainboard_imports_v22_settings() {
   fakes::FakeClock clock;
   fakes::FakeEeprom eeprom;
@@ -1105,6 +1161,23 @@ void test_dosing_runs_same_command_again_after_main_board_reboot() {
   TEST_ASSERT_EQUAL_UINT32(2, bench.app.commandCount());
 }
 
+void test_system_restart_dosing_board_from_main_board() {
+  SystemBench system;
+  system.begin();
+  system.run(2 * kSecond);
+  system.command("dosing restart");
+  TEST_ASSERT_TRUE(system.main.serial.contains("ok - dosing board restarting"));
+  TEST_ASSERT_TRUE(system.dosing.app.restartRequested());
+
+  // Dosing console too.
+  fakes::FakeClock clock;
+  fakes::FakeEeprom eeprom;
+  DosingBench bench(clock, eeprom);
+  bench.app.begin();
+  bench.type("restart");
+  TEST_ASSERT_TRUE(bench.app.restartRequested());
+}
+
 void test_system_dosing_command_without_dosing_board() {
   SystemBench system;
   system.begin();
@@ -1149,6 +1222,9 @@ int main() {
   RUN_TEST(test_mainboard_rs485_receiver_after_usb_window);
   RUN_TEST(test_mainboard_usb_console_keeps_rs485_off_while_used);
   RUN_TEST(test_mainboard_remote_command_and_remote_cal_off);
+  RUN_TEST(test_mainboard_restart_command_keeps_batch_position);
+  RUN_TEST(test_mainboard_remote_restart_listens_at_once_and_resumes_even_without_resume_batch);
+  RUN_TEST(test_system_restart_dosing_board_from_main_board);
   RUN_TEST(test_mainboard_imports_v22_settings);
   RUN_TEST(test_mainboard_console_changes_production_time);
   RUN_TEST(test_mainboard_shows_link_loss);

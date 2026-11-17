@@ -5,6 +5,7 @@
  *  - records every byte the firmware sends on UART0 together with the levels
  *    of DE (pin 2 = PE4) and RE (pin 5 = PE3) at that moment,
  *  - checks that DE is released only after the last byte has been shifted out,
+ *  - restarts the firmware with the "restart" command (watchdog reset),
  *  - types commands into UART0 as the USB console or the RS485 unit would.
  *
  * Checks: every byte leaves with DE HIGH and RE HIGH (transmitter on, receiver
@@ -124,6 +125,18 @@ int main(int argc, char **argv) {
   if (!run_until(2.5)) return 2;
   failures += check(g_out[0] == ';' && strchr(g_out, ':') != NULL, "report frame sent");
   failures += check(g_de == 0 && g_re == 0, "listening again after the report");
+
+  /* Remote restart: watchdog reset, the firmware starts again (the start-up
+   * code must switch the watchdog off, or it would reset forever) and keeps
+   * listening on RS485 instead of giving USB its 2-minute window. */
+  g_len = 0;
+  type_line("restart");
+  if (!run_until(4.5)) return 2;
+  failures += check(strstr(g_out, "ok - restarting the main board") != NULL, "restart command answered");
+  failures += check(strstr(g_out, "restarted by the restart command") != NULL, "firmware started again after the watchdog reset");
+  const char *banner = strstr(g_out, "Clara main board v3.1");
+  failures += check(banner != NULL && strstr(banner + 1, "Clara main board v3.1") == NULL, "restarted exactly once (no reset loop)");
+  failures += check(g_de == 0 && g_re == 0, "listening on RS485 right after the remote restart");
 
   failures += check(g_bad_bytes == 0, "every byte sent with DE HIGH and RE HIGH");
   /* One character at 115200 baud (10 bits) lasts 1389 CPU cycles: DE must stay

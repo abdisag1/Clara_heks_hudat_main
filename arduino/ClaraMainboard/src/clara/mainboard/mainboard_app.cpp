@@ -48,6 +48,7 @@ MainboardApp::MainboardApp(const Clock& clock, MainboardIo& io, DosingLinkPort& 
       remote_(link),
       serialInput_(),
       remoteListening_(false),
+      restartRequested_(false),
       status_() {}
 
 void MainboardApp::begin() {
@@ -57,13 +58,18 @@ void MainboardApp::begin() {
   loadCalibration();
   applyParams();
 
+  const uint8_t restartFlag = eeprom_.read(kEepromRestartFlagAddress);
+  status_.restartedByCommand = restartFlag == kRestartFromUsb || restartFlag == kRestartFromRemote;
+  if (restartFlag != kRestartNone) eeprom_.update(kEepromRestartFlagAddress, kRestartNone);
+
   // Resume an interrupted batch, if any.
   uint8_t saved[kCycleProgressSize];
   if (progressStore_.load(saved)) {
     CycleProgress progress = decodeProgress(saved);
     // A transfer fault is not a batch: it is kept even with resume_batch = 0.
     const bool interrupted = progress.state != kStateStandby && progress.state != kStateTransferFault;
-    if (interrupted && params_.get(kResumeBatch) < 0.5f) {
+    // A commanded restart is not a power cut: the batch always continues.
+    if (interrupted && params_.get(kResumeBatch) < 0.5f && !status_.restartedByCommand) {
       // Resume disabled: start in standby, but keep the batch counter and the
       // electrode polarity so the reversal schedule stays correct.
       progress.state = kStateStandby;
@@ -86,6 +92,7 @@ void MainboardApp::begin() {
   serialInput_.begin(nowMs);
   remoteListening_ = false;
   io_.setRemoteListening(false);
+  if (restartFlag == kRestartFromRemote) selectRemoteInput();  // the remote unit restarted us: keep listening
 
   sensorTimer_.start(nowMs);
   voltageTimer_.start(nowMs);
@@ -145,6 +152,16 @@ void MainboardApp::applySerialInputMode() {
   if (listening == remoteListening_) return;
   remoteListening_ = listening;
   io_.setRemoteListening(listening);
+}
+
+void MainboardApp::requestRestart(bool fromRemote) {
+  const uint32_t nowMs = clock_.millis();
+  // Save the exact position: the batch continues at the same minute.
+  uint8_t bytes[kCycleProgressSize];
+  encodeProgress(cycle_.progress(nowMs, true), bytes);
+  progressStore_.save(bytes);
+  eeprom_.update(kEepromRestartFlagAddress, fromRemote ? kRestartFromRemote : kRestartFromUsb);
+  restartRequested_ = true;
 }
 
 bool MainboardApp::selectRemoteInput() {
